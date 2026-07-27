@@ -1,0 +1,384 @@
+// ============================================================================
+// AgriSim CAD — Schema de base de datos (PostgreSQL / Supabase)
+// Sistema de simulación de financiamiento agrícola y gestión de campo
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// AUTENTICACIÓN Y ROLES
+// ----------------------------------------------------------------------------
+
+enum RolUsuario {
+  MASTER_ADMIN       // Control total: usuarios, roles, configuración
+  GERENTE            // Gerente de departamento: aprueba financiamientos, ve todo
+  TECNICO_CAMPO      // Técnico de campo: carga data de productores/parcelas/ciclos
+  JUNTA_DIRECTIVA    // Solo lectura: dashboards y reportes ejecutivos
+}
+
+model Usuario {
+  id            String     @id @default(uuid())
+  nombre        String
+  email         String     @unique
+  passwordHash  String
+  rol           RolUsuario
+  activo        Boolean    @default(true)
+  telefono      String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  ultimoLogin   DateTime?
+
+  // Relaciones de auditoría / asignación
+  ciclosAsignados       Ciclo[]                  @relation("TecnicoResponsable")
+  parcelasCargadas      Parcela[]                @relation("CargadaPor")
+  logsAuditoria         LogAuditoria[]
+  solicitudesEvaluadas  SolicitudFinanciamiento[] @relation("EvaluadoPor")
+  solicitudesAprobadas  SolicitudFinanciamiento[] @relation("AprobadoPor")
+  despachosRealizados   Despacho[]               @relation("DespachoResponsable")
+  inspeccionesRealizadas InspeccionCampo[]        @relation("InspeccionTecnico")
+
+  @@map("usuarios")
+}
+
+model LogAuditoria {
+  id          String   @id @default(uuid())
+  usuarioId   String
+  usuario     Usuario  @relation(fields: [usuarioId], references: [id])
+  accion      String   // ej: "CREAR_SIMULACION", "APROBAR_FINANCIAMIENTO", "IMPORTAR_KML"
+  entidad     String   // ej: "Ciclo", "Parcela"
+  entidadId   String?
+  detalle     Json?
+  createdAt   DateTime @default(now())
+
+  @@map("logs_auditoria")
+}
+
+// ----------------------------------------------------------------------------
+// PRODUCTORES Y PARCELAS (GIS)
+// ----------------------------------------------------------------------------
+
+model Productor {
+  id              String   @id @default(uuid())
+  codigoSima      String?  @unique // código del productor en el sistema SIMA
+  nombre          String
+  cedulaRif       String?
+  telefono        String?
+  email           String?
+  ubicacionZona   String?  // región/municipio general
+  activo          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  fincas          Finca[]
+  ciclos          Ciclo[]
+
+  @@map("productores")
+}
+
+model Finca {
+  id            String    @id @default(uuid())
+  productorId   String
+  productor     Productor @relation(fields: [productorId], references: [id])
+  nombre        String
+  codigoSima    String?   @unique
+  municipio     String?
+  estado        String?
+  areaHectareas Decimal?  @db.Decimal(10, 2)
+  createdAt     DateTime  @default(now())
+
+  lotes         Parcela[]
+
+  @@map("fincas")
+}
+
+// Parcela / Lote — geometría importada desde SIMA en formato KML/KMZ/GeoJSON
+model Parcela {
+  id              String   @id @default(uuid())
+  fincaId         String
+  finca           Finca    @relation(fields: [fincaId], references: [id])
+  nombreLote      String
+  codigoSima      String?  @unique
+  areaHectareas   Decimal? @db.Decimal(10, 2)
+  cultivo         String?  // ej: "Frijol Pico Negro", "Frijol Mung", "Maíz"
+
+  // Geometría: se guarda como GeoJSON (Polygon/MultiPolygon) para consumo
+  // directo en mapas web (Leaflet/Mapbox). El archivo KML/KMZ original
+  // también se conserva en storage (Supabase Storage) por trazabilidad.
+  geoJson         Json
+  archivoOriginalUrl String? // URL del .kml/.kmz original en Supabase Storage
+  centroideLat    Decimal? @db.Decimal(10, 6)
+  centroideLng    Decimal? @db.Decimal(10, 6)
+
+  cargadaPorId    String?
+  cargadaPor      Usuario? @relation("CargadaPor", fields: [cargadaPorId], references: [id])
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  ciclos          Ciclo[]
+
+  @@map("parcelas")
+}
+
+// ----------------------------------------------------------------------------
+// CICLOS DE SIEMBRA (dato agronómico: qué se siembra, dónde, cuándo)
+// ----------------------------------------------------------------------------
+
+enum TipoCiclo {
+  NORTE_VERANO
+  ZAFRA
+  OTRO
+}
+
+model Ciclo {
+  id                String      @id @default(uuid())
+  nombre            String      // ej: "Norte Verano 2026-2027"
+  tipo              TipoCiclo
+
+  productorId       String
+  productor         Productor   @relation(fields: [productorId], references: [id])
+
+  parcelaId         String
+  parcela           Parcela     @relation(fields: [parcelaId], references: [id])
+
+  cultivo           String      // Frijol Pico Negro / Frijol Mung / etc.
+  areaHectareas     Decimal     @db.Decimal(10, 2)
+  rendimientoEsperadoQqHa Decimal? @db.Decimal(10, 2) // qq/ha estimado
+
+  fechaSiembraEst   DateTime?
+  fechaCosechaEst   DateTime?
+
+  tecnicoResponsableId String?
+  tecnicoResponsable   Usuario? @relation("TecnicoResponsable", fields: [tecnicoResponsableId], references: [id])
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  solicitud          SolicitudFinanciamiento?
+
+  @@map("ciclos")
+}
+
+// ============================================================================
+// EXPEDIENTE DE FINANCIAMIENTO A CAMPO
+// Modela el flujo real de CAD, punto por punto:
+//   1. Evaluación y caracterización
+//   2. Cálculo de paquete tecnológico + anticipo (opcional)
+//   3. Aprobación y contratación
+//   4. Despacho y desembolso
+//   5. Seguimiento técnico en campo
+//   6. Liquidación y recuperación
+// ============================================================================
+
+enum EstadoSolicitud {
+  SOLICITUD_RECIBIDA        // 1. Evaluación y caracterización
+  PAQUETE_DEFINIDO          // 2. Paquete tecnológico calculado (+ anticipo si aplica)
+  APROBADA                  // 3a. Aprobación interna (Gerente)
+  CONTRATO_FIRMADO          // 3b. Contrato de financiamiento / compra-venta firmado
+  DESPACHADA                // 4. Insumos entregados y/o anticipo girado
+  EN_SEGUIMIENTO            // 5. Seguimiento técnico en campo
+  COSECHADA                 // 6a. Cosecha recibida, pendiente de liquidar
+  LIQUIDADA                 // 6b. Cobro aplicado, expediente cerrado
+  RECHAZADA
+  CANCELADA
+}
+
+enum CategoriaInsumo {
+  SEMILLA
+  FERTILIZANTE
+  AGROQUIMICO
+  MECANIZACION
+  OTRO
+}
+
+enum TipoContrato {
+  FINANCIAMIENTO_INSUMOS
+  COMPRA_VENTA
+  MIXTO
+}
+
+enum TipoDespacho {
+  INSUMOS
+  ANTICIPO_EFECTIVO
+}
+
+model SolicitudFinanciamiento {
+  id                String          @id @default(uuid())
+  cicloId           String          @unique
+  ciclo             Ciclo           @relation(fields: [cicloId], references: [id])
+  estado            EstadoSolicitud @default(SOLICITUD_RECIBIDA)
+
+  // --- Paso 1: Evaluación y caracterización ---
+  areaVerificadaHa  Decimal?        @db.Decimal(10, 2)
+  evaluacionTecnica String?         // notas de capacidad productiva de la finca
+  evaluadoPorId     String?
+  evaluadoPor       Usuario?        @relation("EvaluadoPor", fields: [evaluadoPorId], references: [id])
+  fechaEvaluacion   DateTime?
+
+  // --- Paso 2: Paquete tecnológico y anticipo ---
+  // El costo base del paquete se deriva de la suma de PaqueteItem (ver abajo).
+  margenInsumosPct       Decimal    @db.Decimal(5, 4) @default(0.30) // +30% sobre costo de insumos
+  solicitaAnticipo       Boolean    @default(false)
+  montoAnticipoSolicitado Decimal?  @db.Decimal(14, 2)
+  recargoAnticipoPct     Decimal    @db.Decimal(5, 4) @default(0.05) // +5% recargo administrativo
+
+  // --- Paso 3: Aprobación y contratación ---
+  montoAnticipoAprobado  Decimal?   @db.Decimal(14, 2) // puede diferir de lo solicitado
+  aprobadoPorId          String?
+  aprobadoPor            Usuario?   @relation("AprobadoPor", fields: [aprobadoPorId], references: [id])
+  fechaAprobacion        DateTime?
+  motivoRechazo          String?
+
+  notas             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  itemsPaquete      PaqueteItem[]
+  contrato          Contrato?
+  despachos         Despacho[]
+  inspecciones      InspeccionCampo[]
+  liquidacion       Liquidacion?
+
+  @@map("solicitudes_financiamiento")
+}
+
+// Paso 2 — Detalle del paquete tecnológico (semilla, fertilizante, etc.)
+model PaqueteItem {
+  id              String           @id @default(uuid())
+  solicitudId     String
+  solicitud       SolicitudFinanciamiento @relation(fields: [solicitudId], references: [id])
+
+  categoria       CategoriaInsumo
+  nombreInsumo    String           // ej: "Semilla certificada Frijol Pico Negro"
+  unidad          String           // ej: "kg", "litro", "saco"
+  cantidad        Decimal          @db.Decimal(12, 2)
+  costoUnitario   Decimal          @db.Decimal(12, 2)
+  etapaAplicacion String?          // ej: "Siembra", "Primera fertilización" — para programar el despacho
+
+  createdAt       DateTime         @default(now())
+
+  @@map("paquete_items")
+}
+
+// Paso 3 — Contrato de financiamiento / compra-venta
+model Contrato {
+  id                          String    @id @default(uuid())
+  solicitudId                 String    @unique
+  solicitud                   SolicitudFinanciamiento @relation(fields: [solicitudId], references: [id])
+
+  tipo                        TipoContrato
+  numeroContrato               String   @unique
+  fechaFirma                  DateTime
+  archivoUrl                  String?  // PDF firmado en Supabase Storage
+  compromisoEntregaCosecha    Boolean  @default(true)
+  condicionesPago              String?
+
+  createdAt                   DateTime @default(now())
+
+  @@map("contratos")
+}
+
+// Paso 4 — Despacho de insumos y/o giro de anticipo en efectivo
+model Despacho {
+  id              String       @id @default(uuid())
+  solicitudId     String
+  solicitud       SolicitudFinanciamiento @relation(fields: [solicitudId], references: [id])
+
+  tipo            TipoDespacho
+  fecha           DateTime
+  etapaCultivo    String?      // coincide con PaqueteItem.etapaAplicacion cuando tipo = INSUMOS
+  montoEfectivo   Decimal?     @db.Decimal(14, 2) // usado cuando tipo = ANTICIPO_EFECTIVO
+  itemsDespachadosJson Json?   // snapshot de qué PaqueteItem/cantidades salieron, cuando tipo = INSUMOS
+
+  responsableId   String?
+  responsable     Usuario?     @relation("DespachoResponsable", fields: [responsableId], references: [id])
+
+  createdAt       DateTime     @default(now())
+
+  @@map("despachos")
+}
+
+// Paso 5 — Seguimiento técnico en campo
+model InspeccionCampo {
+  id                    String   @id @default(uuid())
+  solicitudId           String
+  solicitud             SolicitudFinanciamiento @relation(fields: [solicitudId], references: [id])
+
+  fecha                 DateTime
+  tecnicoId             String
+  tecnico                Usuario  @relation("InspeccionTecnico", fields: [tecnicoId], references: [id])
+
+  usoAdecuadoInsumos    Boolean?
+  estadoCultivo         String?  // ej: "Óptimo", "Con estrés hídrico", "Plaga detectada"
+  observaciones         String?
+
+  createdAt              DateTime @default(now())
+
+  @@map("inspecciones_campo")
+}
+
+// Paso 6 — Liquidación y recuperación
+// Cobro = (Costo Insumos x (1 + margenInsumosPct)) + (Anticipo x (1 + recargoAnticipoPct))
+model Liquidacion {
+  id                        String   @id @default(uuid())
+  solicitudId               String   @unique
+  solicitud                 SolicitudFinanciamiento @relation(fields: [solicitudId], references: [id])
+
+  fecha                     DateTime
+
+  // --- Insumos ---
+  costoInsumosBase          Decimal  @db.Decimal(14, 2) // suma de PaqueteItem (cantidad * costoUnitario)
+  montoInsumosConMargen     Decimal  @db.Decimal(14, 2) // costoInsumosBase * (1 + margenInsumosPct)
+
+  // --- Anticipo ---
+  montoAnticipoBase         Decimal  @db.Decimal(14, 2) @default(0)
+  montoAnticipoConRecargo   Decimal  @db.Decimal(14, 2) @default(0)
+
+  // --- Totales ---
+  totalACobrar              Decimal  @db.Decimal(14, 2) // montoInsumosConMargen + montoAnticipoConRecargo
+  gananciaCAD                Decimal  @db.Decimal(14, 2) // (margen insumos) + (recargo anticipo)
+
+  // --- Recuperación real ---
+  produccionRealQq          Decimal? @db.Decimal(14, 2)
+  valorCosechaRecibida      Decimal? @db.Decimal(14, 2) // lo efectivamente cobrado/compensado con cosecha
+  saldoPendiente            Decimal? @db.Decimal(14, 2) // totalACobrar - valorCosechaRecibida
+  estadoCobranza            String   @default("PENDIENTE") // PENDIENTE / COBRADO / PARCIAL / INCOBRABLE
+
+  notas                     String?
+  createdAt                 DateTime @default(now())
+
+  @@map("liquidaciones")
+}
+
+// ----------------------------------------------------------------------------
+// NOTICIAS / CLIMA (feed externo cacheado)
+// ----------------------------------------------------------------------------
+
+enum TipoNoticia {
+  CLIMA
+  PRECIOS_MERCADO
+  POLITICA_AGRICOLA
+  OTRO
+}
+
+model NoticiaFeed {
+  id          String      @id @default(uuid())
+  tipo        TipoNoticia
+  titulo      String
+  resumen     String
+  fuente      String
+  url         String?
+  region      String?     // ej: "Barinas", "Portuguesa"
+  relevancia  Int         @default(1) // 1-5, para ordenar en el dashboard
+  fechaPublicacion DateTime
+  createdAt   DateTime    @default(now())
+
+  @@map("noticias_feed")
+}
