@@ -28,6 +28,12 @@ export class SolicitudesController {
     return this.service.resumenPortafolio();
   }
 
+  // Página de Resumen de Ciclo — uso diario de técnicos y gerencia.
+  @Get('resumen/ciclos')
+  resumenCiclos() {
+    return this.service.resumenCiclos();
+  }
+
   @Get(':id')
   obtener(@Param('id') id: string) {
     return this.service.obtener(id);

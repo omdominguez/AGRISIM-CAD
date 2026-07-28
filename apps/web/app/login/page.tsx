@@ -22,7 +22,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       guardarSesion(data.access_token, data.usuario);
-      router.push('/solicitudes');
+      router.push('/resumen');
     } catch (err: any) {
       setError(err.message ?? 'No se pudo iniciar sesión.');
     } finally {

@@ -11,6 +11,7 @@ interface ItemNav {
 }
 
 const NAV: ItemNav[] = [
+  { href: '/resumen', label: 'Resumen de Ciclo' },
   { href: '/solicitudes', label: 'Solicitudes de Financiamiento' },
   { href: '/simulador', label: 'Calculadora Rápida' },
   { href: '/ciclos', label: 'Ciclos de Siembra' },

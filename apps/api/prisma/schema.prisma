@@ -297,6 +297,7 @@ model Despacho {
   etapaCultivo    String?      // coincide con PaqueteItem.etapaAplicacion cuando tipo = INSUMOS
   montoEfectivo   Decimal?     @db.Decimal(14, 2) // usado cuando tipo = ANTICIPO_EFECTIVO
   itemsDespachadosJson Json?   // snapshot de qué PaqueteItem/cantidades salieron, cuando tipo = INSUMOS
+  valorDespachado Decimal      @db.Decimal(14, 2) // $ real de este despacho — base de "gastado a la fecha" en Resumen de Ciclo
 
   responsableId   String?
   responsable     Usuario?     @relation("DespachoResponsable", fields: [responsableId], references: [id])
@@ -319,6 +320,12 @@ model InspeccionCampo {
   usoAdecuadoInsumos    Boolean?
   estadoCultivo         String?  // ej: "Óptimo", "Con estrés hídrico", "Plaga detectada"
   observaciones         String?
+
+  // Datos operativos que el técnico actualiza en cada visita — alimentan
+  // la página de Resumen de Ciclo. El valor más reciente por solicitud
+  // es el que se usa como "dato actual" (no se promedian ni acumulan).
+  areaEfectivaHa            Decimal? @db.Decimal(10, 2) // ha realmente en pie (puede bajar por pérdida/resiembra)
+  rendimientoProyectadoQqHa Decimal? @db.Decimal(10, 2) // proyección de cosecha actualizada, qq/ha
 
   createdAt              DateTime @default(now())
 

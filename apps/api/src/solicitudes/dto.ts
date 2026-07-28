@@ -54,8 +54,9 @@ export class CrearDespachoDto {
   @IsEnum(TipoDespacho) tipo: TipoDespacho;
   @IsDateString() fecha: string;
   @IsOptional() @IsString() etapaCultivo?: string;
-  @IsOptional() @IsNumber() @Min(0) montoEfectivo?: number;
+  @IsOptional() @IsNumber() @Min(0) montoEfectivo?: number; // requerido si tipo = ANTICIPO_EFECTIVO
   @IsOptional() itemsDespachadosJson?: any;
+  @IsOptional() @IsNumber() @Min(0) valorDespachado?: number; // requerido si tipo = INSUMOS (valor $ de lo entregado)
 }
 
 // Paso 5 — inspección de campo
@@ -64,6 +65,9 @@ export class CrearInspeccionDto {
   @IsOptional() @IsBoolean() usoAdecuadoInsumos?: boolean;
   @IsOptional() @IsString() estadoCultivo?: string;
   @IsOptional() @IsString() observaciones?: string;
+  // Actualización operativa de campo — alimenta la página de Resumen de Ciclo.
+  @IsOptional() @IsNumber() @Min(0) areaEfectivaHa?: number;
+  @IsOptional() @IsNumber() @Min(0) rendimientoProyectadoQqHa?: number;
 }
 
 // Paso 6 — liquidación
