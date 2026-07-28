@@ -21,7 +21,7 @@ export class ProducersService {
   obtener(id: string) {
     return this.prisma.productor.findUnique({
       where: { id },
-     include: { fincas: { include: { lotes: true } }, ciclos: true },
+      include: { fincas: { include: { lotes: true } }, ciclos: true },
     });
   }
 }

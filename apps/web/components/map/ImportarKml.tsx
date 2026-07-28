@@ -39,7 +39,7 @@ export default function ImportarKml({ fincaId }: { fincaId?: string }) {
   }
 
   return (
-    <label className="bg-neutral-900 text-white text-sm rounded px-4 py-2 cursor-pointer">
+    <label className="bg-cad-naranja text-white text-sm font-medium rounded px-4 py-2 cursor-pointer hover:brightness-95 transition">
       {cargando ? 'Importando...' : 'Importar KML/KMZ de SIMA'}
       <input type="file" accept=".kml,.kmz" onChange={onFileChange} className="hidden" />
     </label>

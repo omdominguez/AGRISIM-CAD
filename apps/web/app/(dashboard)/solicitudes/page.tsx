@@ -16,6 +16,20 @@ const ETIQUETA_ESTADO: Record<string, string> = {
   CANCELADA: 'Cancelada',
 };
 
+// Color por estado: en curso = ámbar, liquidado = verde (ganancia realizada), rechazado/cancelado = danger.
+const COLOR_ESTADO: Record<string, string> = {
+  SOLICITUD_RECIBIDA: 'bg-cad-ambar/20 text-cad-ambar',
+  PAQUETE_DEFINIDO: 'bg-cad-ambar/20 text-cad-ambar',
+  APROBADA: 'bg-cad-info/10 text-cad-info',
+  CONTRATO_FIRMADO: 'bg-cad-info/10 text-cad-info',
+  DESPACHADA: 'bg-cad-info/10 text-cad-info',
+  EN_SEGUIMIENTO: 'bg-cad-verde-claro/20 text-cad-verde',
+  COSECHADA: 'bg-cad-verde-claro/20 text-cad-verde',
+  LIQUIDADA: 'bg-cad-verde/15 text-cad-verde font-medium',
+  RECHAZADA: 'bg-cad-danger/10 text-cad-danger',
+  CANCELADA: 'bg-cad-danger/10 text-cad-danger',
+};
+
 export default function SolicitudesPage() {
   const [solicitudes, setSolicitudes] = useState<any[]>([]);
   const [resumen, setResumen] = useState<any | null>(null);
@@ -28,8 +42,8 @@ export default function SolicitudesPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-1">Solicitudes de Financiamiento</h1>
-      <p className="text-sm text-neutral-500 mb-6">
+      <h1 className="text-2xl font-bold text-cad-navy mb-1">Solicitudes de Financiamiento</h1>
+      <p className="text-sm text-cad-apagado mb-6">
         Expediente completo del flujo: evaluación → paquete → aprobación → contrato → despacho → seguimiento → liquidación.
       </p>
 
@@ -41,10 +55,10 @@ export default function SolicitudesPage() {
         </div>
       )}
 
-      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+      {error && <p className="text-sm text-cad-danger mb-4">{error}</p>}
 
-      <table className="w-full text-sm bg-white border rounded-xl overflow-hidden">
-        <thead className="bg-neutral-100 text-left">
+      <table className="w-full text-sm bg-white border border-cad-linea rounded-xl overflow-hidden">
+        <thead className="bg-cad-superficie text-left">
           <tr>
             <th className="p-3">Productor</th>
             <th className="p-3">Cultivo</th>
@@ -58,7 +72,7 @@ export default function SolicitudesPage() {
               <td className="p-3">{s.ciclo?.productor?.nombre}</td>
               <td className="p-3">{s.ciclo?.cultivo}</td>
               <td className="p-3">
-                <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-xs">
+                <span className={`px-2 py-0.5 rounded-full text-xs ${COLOR_ESTADO[s.estado] ?? 'bg-cad-superficie text-cad-apagado'}`}>
                   {ETIQUETA_ESTADO[s.estado] ?? s.estado}
                 </span>
               </td>
@@ -71,7 +85,7 @@ export default function SolicitudesPage() {
       </table>
 
       {solicitudes.length === 0 && !error && (
-        <p className="text-sm text-neutral-400 mt-4">
+        <p className="text-sm text-cad-apagado mt-4">
           Aún no hay expedientes abiertos. Se crean desde un Ciclo existente (endpoint POST /solicitudes) —
           falta el formulario en UI, ver README → Roadmap Fase 1.
         </p>
@@ -82,8 +96,8 @@ export default function SolicitudesPage() {
 
 function Stat({ label, valor, destacado = false }: { label: string; valor: string; destacado?: boolean }) {
   return (
-    <div className={`border rounded-xl p-5 ${destacado ? 'bg-neutral-900 text-white' : 'bg-white'}`}>
-      <p className={`text-xs uppercase ${destacado ? 'text-neutral-300' : 'text-neutral-500'}`}>{label}</p>
+    <div className={`border border-cad-linea rounded-xl p-5 ${destacado ? 'bg-cad-navy text-white' : 'bg-white'}`}>
+      <p className={`text-xs uppercase ${destacado ? 'text-white/70' : 'text-cad-apagado'}`}>{label}</p>
       <p className="text-2xl font-semibold mt-1">{valor}</p>
     </div>
   );

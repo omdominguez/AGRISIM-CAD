@@ -35,31 +35,39 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-64 shrink-0 bg-neutral-900 text-neutral-100 min-h-screen flex flex-col">
-      <div className="p-5 border-b border-neutral-800">
-        <p className="font-semibold">AgriSim CAD</p>
+    <aside className="w-64 shrink-0 bg-cad-navy text-white min-h-screen flex flex-col">
+      <div className="p-5 border-b border-white/10">
+        <p className="font-bold tracking-tight">
+          CA<span className="text-cad-verde-claro">D</span>
+          <span className="text-cad-naranja">.</span> AgriSim
+        </p>
         {usuario && (
-          <p className="text-xs text-neutral-400 mt-1">
+          <p className="text-xs text-white/60 mt-1">
             {usuario.nombre} · {ROL_LABEL[usuario.rol]}
           </p>
         )}
       </div>
 
       <nav className="flex-1 p-3 space-y-1">
-        {itemsVisibles.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`block px-3 py-2 rounded text-sm ${
-              pathname === item.href ? 'bg-neutral-700' : 'hover:bg-neutral-800'
-            }`}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {itemsVisibles.map((item) => {
+          const activo = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`block px-3 py-2 rounded text-sm transition-colors ${
+                activo
+                  ? 'bg-cad-naranja text-white font-medium'
+                  : 'text-white/80 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
       </nav>
 
-      <button onClick={handleLogout} className="m-3 text-sm text-neutral-400 hover:text-white text-left px-3 py-2">
+      <button onClick={handleLogout} className="m-3 text-sm text-white/50 hover:text-white text-left px-3 py-2">
         Cerrar sesión
       </button>
     </aside>

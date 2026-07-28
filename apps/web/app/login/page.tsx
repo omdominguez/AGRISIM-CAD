@@ -31,35 +31,37 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-neutral-50">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm bg-white p-8 rounded-xl shadow border">
-        <h1 className="text-xl font-semibold mb-1">AgriSim CAD</h1>
-        <p className="text-sm text-neutral-500 mb-6">Financiamiento a campo — CAD</p>
+    <main className="min-h-screen flex items-center justify-center bg-cad-navy">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm bg-white p-8 rounded-xl shadow-xl">
+        <h1 className="font-display text-4xl tracking-wide text-cad-navy leading-none">
+          AGRISIM <span className="text-cad-naranja">CAD</span>
+        </h1>
+        <p className="text-sm text-cad-apagado mt-2 mb-6">Financiamiento a campo — CAD</p>
 
-        <label className="block text-sm mb-1">Correo</label>
+        <label className="block text-sm text-cad-tinta mb-1">Correo</label>
         <input
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full border rounded px-3 py-2 mb-4"
+          className="w-full border border-cad-linea rounded px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-cad-naranja/40 focus:border-cad-naranja"
         />
 
-        <label className="block text-sm mb-1">Contraseña</label>
+        <label className="block text-sm text-cad-tinta mb-1">Contraseña</label>
         <input
           type="password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full border rounded px-3 py-2 mb-4"
+          className="w-full border border-cad-linea rounded px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-cad-naranja/40 focus:border-cad-naranja"
         />
 
-        {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+        {error && <p className="text-sm text-cad-danger mb-4">{error}</p>}
 
         <button
           type="submit"
           disabled={cargando}
-          className="w-full bg-neutral-900 text-white rounded py-2 disabled:opacity-50"
+          className="w-full bg-cad-naranja text-white font-medium rounded py-2 hover:brightness-95 transition disabled:opacity-50"
         >
           {cargando ? 'Ingresando...' : 'Ingresar'}
         </button>

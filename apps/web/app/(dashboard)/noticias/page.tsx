@@ -17,9 +17,9 @@ export default function Pagina() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-4 capitalize">noticias</h1>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <pre className="text-xs bg-white border rounded-xl p-4 overflow-auto max-h-[70vh]">
+      <h1 className="text-2xl font-bold text-cad-navy mb-4 capitalize">noticias</h1>
+      {error && <p className="text-sm text-cad-danger">{error}</p>}
+      <pre className="text-xs bg-white border border-cad-linea rounded-xl p-4 overflow-auto max-h-[70vh]">
         {JSON.stringify(data, null, 2)}
       </pre>
     </div>

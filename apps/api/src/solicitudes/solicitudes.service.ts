@@ -136,7 +136,7 @@ export class SolicitudesService {
   async crearDespacho(id: string, dto: CrearDespachoDto, usuarioId: string) {
     const solicitud = await this.obtener(id);
     const estadosValidos: EstadoSolicitud[] = [EstadoSolicitud.CONTRATO_FIRMADO, EstadoSolicitud.DESPACHADA];
-if (!estadosValidos.includes(solicitud.estado)) {
+    if (!estadosValidos.includes(solicitud.estado)) {
       throw new BadRequestException('El contrato debe estar firmado antes de despachar insumos o girar el anticipo.');
     }
 

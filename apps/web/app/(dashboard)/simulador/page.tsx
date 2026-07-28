@@ -87,25 +87,25 @@ export default function SimuladorPage() {
 
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold mb-1">Calculadora de Financiamiento</h1>
-      <p className="text-neutral-500 mb-6 text-sm">
+      <h1 className="text-2xl font-bold text-cad-navy mb-1">Calculadora de Financiamiento</h1>
+      <p className="text-cad-apagado mb-6 text-sm">
         Estimación rápida con la fórmula real: Cobro = (Insumos × 1+margen) + (Anticipo × 1+recargo).
         Para abrir el expediente formal (paso a paso), ve a <span className="font-medium">Ciclos → Nueva Solicitud</span>.
       </p>
 
       <div className="grid grid-cols-2 gap-8">
         {/* --- FORMULARIO --- */}
-        <div className="bg-white border rounded-xl p-6 space-y-4">
+        <div className="bg-white border border-cad-linea rounded-xl p-6 space-y-4">
           <Campo label="Nombre de la simulación" value={form.nombre} onChange={(v) => onChange('nombre', v)} tipo="text" />
           <Campo label="Cultivo" value={form.cultivo} onChange={(v) => onChange('cultivo', v)} tipo="text" />
 
           <hr />
-          <p className="text-xs font-medium text-neutral-500 uppercase">Paquete tecnológico (insumos)</p>
+          <p className="text-xs font-medium text-cad-apagado uppercase">Paquete tecnológico (insumos)</p>
           <Campo label="Costo total de insumos (semilla, fert., agroquímicos, US$)" value={form.costoTotalInsumos} onChange={(v) => onChange('costoTotalInsumos', v)} />
           <Campo label="Margen sobre insumos (ej. 0.30 = 30%)" value={form.margenInsumosPct} onChange={(v) => onChange('margenInsumosPct', v)} />
 
           <hr />
-          <p className="text-xs font-medium text-neutral-500 uppercase">Anticipo en efectivo (opcional)</p>
+          <p className="text-xs font-medium text-cad-apagado uppercase">Anticipo en efectivo (opcional)</p>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -122,16 +122,16 @@ export default function SimuladorPage() {
           )}
 
           <hr />
-          <p className="text-xs font-medium text-neutral-500 uppercase">
+          <p className="text-xs font-medium text-cad-apagado uppercase">
             Referencia de cosecha (opcional — para ver si la cosecha cubre el cobro)
           </p>
           <Campo label="Área (ha)" value={form.areaHectareas} onChange={(v) => onChange('areaHectareas', v)} />
           <Campo label="Rendimiento esperado (qq/ha)" value={form.rendimientoEsperadoQqHa} onChange={(v) => onChange('rendimientoEsperadoQqHa', v)} />
           <Campo label="Precio de venta esperado ($/qq)" value={form.precioVentaQq} onChange={(v) => onChange('precioVentaQq', v)} />
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-cad-danger">{error}</p>}
 
-          <button onClick={calcular} disabled={cargando} className="bg-neutral-900 text-white rounded px-4 py-2 text-sm disabled:opacity-50">
+          <button onClick={calcular} disabled={cargando} className="bg-cad-naranja text-white font-medium rounded px-4 py-2 text-sm hover:brightness-95 transition disabled:opacity-50">
             {cargando ? 'Calculando...' : 'Calcular'}
           </button>
         </div>
@@ -139,7 +139,7 @@ export default function SimuladorPage() {
         {/* --- RESULTADOS --- */}
         <div className="space-y-4">
           {!resultados && (
-            <div className="bg-white border rounded-xl p-6 text-sm text-neutral-400">
+            <div className="bg-white border border-cad-linea rounded-xl p-6 text-sm text-cad-apagado">
               Completa el formulario y presiona "Calcular" para ver la estimación.
             </div>
           )}
@@ -166,12 +166,12 @@ export default function SimuladorPage() {
                 <MiniStat label="Ganancia por recargo anticipo" valor={`$${resultados.gananciaAnticipo.toFixed(0)}`} />
               </div>
               {resultados.coberturaCosechaPct != null && (
-                <div className="bg-white border rounded-xl p-4">
-                  <p className="text-xs text-neutral-500">Cobertura de la cosecha esperada sobre el cobro</p>
+                <div className="bg-white border border-cad-linea rounded-xl p-4">
+                  <p className="text-xs text-cad-apagado">Cobertura de la cosecha esperada sobre el cobro</p>
                   <p className="text-lg font-medium mt-1">
                     {(resultados.coberturaCosechaPct * 100).toFixed(0)}%
                     {resultados.coberturaCosechaPct < 1 && (
-                      <span className="text-red-600 text-sm ml-2">⚠ la cosecha esperada no cubre el total a cobrar</span>
+                      <span className="text-cad-danger text-sm ml-2">⚠ la cosecha esperada no cubre el total a cobrar</span>
                     )}
                   </p>
                 </div>
@@ -189,13 +189,13 @@ function Campo({
 }: { label: string; value: string; onChange: (v: string) => void; tipo?: string }) {
   return (
     <div>
-      <label className="block text-xs text-neutral-600 mb-1">{label}</label>
+      <label className="block text-xs text-cad-tinta mb-1">{label}</label>
       <input
         type={tipo}
         step="any"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border rounded px-3 py-1.5 text-sm"
+        className="w-full border border-cad-linea rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cad-naranja/40 focus:border-cad-naranja"
       />
     </div>
   );
@@ -205,18 +205,18 @@ function ResultadoCard({
   titulo, valor, nota, destacado = false,
 }: { titulo: string; valor: number; nota: string; destacado?: boolean }) {
   return (
-    <div className={`border rounded-xl p-5 ${destacado ? 'bg-neutral-900 text-white' : 'bg-white'}`}>
-      <p className={`text-xs uppercase ${destacado ? 'text-neutral-300' : 'text-neutral-500'}`}>{titulo}</p>
+    <div className={`border border-cad-linea rounded-xl p-5 ${destacado ? 'bg-cad-navy text-white' : 'bg-white'}`}>
+      <p className={`text-xs uppercase ${destacado ? 'text-white/70' : 'text-cad-apagado'}`}>{titulo}</p>
       <p className="text-2xl font-semibold mt-1">${valor.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
-      <p className="text-xs mt-1 text-neutral-400">{nota}</p>
+      <p className={`text-xs mt-1 ${destacado ? 'text-white/60' : 'text-cad-apagado'}`}>{nota}</p>
     </div>
   );
 }
 
 function MiniStat({ label, valor }: { label: string; valor: string }) {
   return (
-    <div className="bg-white border rounded-xl p-4">
-      <p className="text-xs text-neutral-500">{label}</p>
+    <div className="bg-white border border-cad-linea rounded-xl p-4">
+      <p className="text-xs text-cad-apagado">{label}</p>
       <p className="text-lg font-medium mt-1">{valor}</p>
     </div>
   );
