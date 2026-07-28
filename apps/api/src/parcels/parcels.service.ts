@@ -26,7 +26,7 @@ export class ParcelsService {
       throw new BadRequestException('El archivo no contiene polígonos de lotes/parcelas.');
     }
 
-    const creadas = [];
+    const creadas: Awaited<ReturnType<typeof this.prisma.parcela.create>>[] = [];
     for (const feature of poligonos) {
       const centroide = calcularCentroide(feature.geometry as any);
       const parcela = await this.prisma.parcela.create({
