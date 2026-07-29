@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
+import Cookies from 'js-cookie';
 import { apiFetch } from '../../../../lib/api';
 import { ESTADOS_VENEZUELA, MUNICIPIOS_POR_ESTADO, EstadoVenezuela } from '../../../../lib/venezuela-geo';
+
+// Leaflet necesita `window` — se carga solo en cliente.
+const DibujarLote = dynamic(() => import('../../../../components/map/DibujarLote'), { ssr: false });
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
 const ETIQUETA_CATEGORIA: Record<string, string> = {
   SEMILLA: 'Semilla',
@@ -22,6 +29,7 @@ export default function ProductorDetallePage() {
   const [cuenta, setCuenta] = useState<any | null>(null);
   const [loteAbierto, setLoteAbierto] = useState<string | null>(null);
   const [mostrarNuevaFinca, setMostrarNuevaFinca] = useState(false);
+  const [fincaParaLote, setFincaParaLote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function recargar() {
@@ -45,6 +53,11 @@ export default function ProductorDetallePage() {
       {mostrarNuevaFinca && (
         <NuevaFincaModal productorId={productorId} onClose={() => setMostrarNuevaFinca(false)}
           onCreado={() => { setMostrarNuevaFinca(false); recargar(); }} />
+      )}
+
+      {fincaParaLote && (
+        <AgregarLoteModal fincaId={fincaParaLote} onClose={() => setFincaParaLote(null)}
+          onCreado={() => { setFincaParaLote(null); recargar(); }} />
       )}
 
       {cuenta && (
@@ -73,7 +86,10 @@ export default function ProductorDetallePage() {
             {(f.municipio || f.estado) && (
               <p className="text-xs text-cad-apagado">{f.municipio ? `${f.municipio}, ${f.estado}` : f.estado}</p>
             )}
-            <p className="text-xs text-cad-apagado mt-1">{f.lotes.length} parcela(s) importada(s)</p>
+            <p className="text-xs text-cad-apagado mt-1">{f.lotes.length} parcela(s) cargada(s)</p>
+            <button onClick={() => setFincaParaLote(f.id)} className="text-xs text-cad-naranja hover:underline mt-2">
+              + Agregar lote
+            </button>
           </div>
         ))}
         {productor.fincas.length === 0 && (
@@ -144,6 +160,105 @@ export default function ProductorDetallePage() {
       {desempeno && desempeno.ranking.length === 0 && (
         <p className="text-sm text-cad-apagado">Este productor todavía no tiene lotes de siembra registrados.</p>
       )}
+    </div>
+  );
+}
+
+function AgregarLoteModal({ fincaId, onClose, onCreado }: { fincaId: string; onClose: () => void; onCreado: () => void }) {
+  const [modo, setModo] = useState<'kml' | 'dibujo'>('kml');
+  const [nombreLote, setNombreLote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function importarKml(file: File) {
+    setError(null);
+    setCargando(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const token = Cookies.get('agrisim_token');
+      const res = await fetch(`${API_URL}/parcelas/importar-kml/${fincaId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error((await res.json()).message ?? 'Error al importar el archivo.');
+      onCreado();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  async function guardarDibujo(puntos: [number, number][], areaHa: number) {
+    if (!nombreLote) {
+      setError('Ponle un nombre al lote antes de guardarlo.');
+      return;
+    }
+    setError(null);
+    setCargando(true);
+    try {
+      // Backend espera [lng, lat] (orden GeoJSON); el mapa entrega [lat, lng].
+      const coordenadas = puntos.map(([lat, lng]) => [lng, lat]);
+      await apiFetch(`/parcelas/manual/${fincaId}`, {
+        method: 'POST',
+        body: JSON.stringify({ nombreLote, coordenadas }),
+      });
+      onCreado();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-cad-navy/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 w-full max-w-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <p className="font-semibold text-cad-navy">Agregar lote</p>
+          <button onClick={onClose} className="text-cad-apagado hover:text-cad-tinta text-xl leading-none">×</button>
+        </div>
+
+        <div className="flex gap-2 mb-4 border-b border-cad-linea">
+          <button onClick={() => setModo('kml')}
+            className={`text-sm px-3 py-2 border-b-2 -mb-px ${modo === 'kml' ? 'border-cad-naranja text-cad-navy font-medium' : 'border-transparent text-cad-apagado'}`}>
+            Importar KML/KMZ de SIMA
+          </button>
+          <button onClick={() => setModo('dibujo')}
+            className={`text-sm px-3 py-2 border-b-2 -mb-px ${modo === 'dibujo' ? 'border-cad-naranja text-cad-navy font-medium' : 'border-transparent text-cad-apagado'}`}>
+            Dibujar en el mapa
+          </button>
+        </div>
+
+        {modo === 'kml' ? (
+          <div>
+            <p className="text-xs text-cad-apagado mb-3">
+              El sistema calcula el área exacta del polígono importado — no hace falta digitarla.
+            </p>
+            <label className={`inline-block bg-cad-naranja text-white text-sm font-medium rounded px-4 py-2 transition ${
+              cargando ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:brightness-95'
+            }`}>
+              {cargando ? 'Importando...' : 'Elegir archivo .kml/.kmz'}
+              <input type="file" accept=".kml,.kmz" disabled={cargando} className="hidden"
+                onChange={(e) => e.target.files?.[0] && importarKml(e.target.files[0])} />
+            </label>
+          </div>
+        ) : (
+          <div>
+            <div className="mb-3">
+              <label className="block text-xs text-cad-apagado mb-1">Nombre del lote</label>
+              <input value={nombreLote} onChange={(e) => setNombreLote(e.target.value)}
+                placeholder="Lote 1"
+                className="w-full border border-cad-linea rounded px-3 py-2 text-sm" />
+            </div>
+            <DibujarLote onCompletar={guardarDibujo} />
+          </div>
+        )}
+
+        {error && <p className="text-sm text-cad-danger mt-3">{error}</p>}
+      </div>
     </div>
   );
 }

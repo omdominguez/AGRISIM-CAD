@@ -189,23 +189,6 @@ Pendiente de UI (el backend ya lo soporta vía API): definir paquete
 tecnológico, aprobar/contratar/despachar el expediente, y registrar
 inspecciones de campo — son los siguientes formularios a construir.
 
-## Mapa con semáforo (estilo SIMA)
-
-`/mapa` ahora muestra cada lote coloreado por un semáforo propio — verde,
-amarillo, rojo, o gris si no tiene ciclo activo — calculado con datos que el
-sistema ya tiene (área efectiva vs. sembrada, incidencias reportadas, y qué
-tan reciente fue la última visita del técnico). El popup de cada lote
-muestra productor, predio, cultivo, ciclo y días desde la siembra, en el
-mismo espíritu que el dashboard de SIMA.
-
-**Lo que SIMA sí tiene y nosotros no (todavía)**: imágenes satelitales con
-índice NDVI (verdor real de la vegetación, vía un proveedor como Planet).
-Eso requiere contratar un servicio externo de terceros — no es algo que se
-resuelva con los datos que ya cargamos, es una fuente de datos nueva. Si se
-decide integrar, el punto de entrada sería agregar un `NoticiaFeed`-style
-job que consulte la API del proveedor por las coordenadas de cada parcela y
-guarde el resultado, similar al job de clima ya planeado en la Fase 4.
-
 ## IA (planeado, no implementado todavía)
 
 Idea para una siguiente fase: usar un modelo de lenguaje para ayudar a

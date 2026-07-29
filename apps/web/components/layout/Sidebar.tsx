@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { obtenerUsuario, cerrarSesion, RolUsuario } from '../../lib/auth';
+import { obtenerUsuario, cerrarSesion, RolUsuario, UsuarioSesion } from '../../lib/auth';
 import Logo from '../brand/Logo';
 
 interface ItemNav {
@@ -32,7 +33,17 @@ const ROL_LABEL: Record<RolUsuario, string> = {
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const usuario = obtenerUsuario();
+
+  // La cookie de sesión solo existe en el navegador — leerla en el primer
+  // render produciría un HTML distinto al que ya generó el servidor
+  // (hydration mismatch). Se lee en useEffect, después de montar, así el
+  // primer render en cliente coincide exactamente con el del servidor y
+  // el nombre/rol del usuario aparece un instante después, sin error.
+  const [usuario, setUsuario] = useState<UsuarioSesion | null>(null);
+
+  useEffect(() => {
+    setUsuario(obtenerUsuario());
+  }, []);
 
   const itemsVisibles = NAV.filter(
     (item) => !item.rolesPermitidos || item.rolesPermitidos.includes(usuario?.rol as RolUsuario),
@@ -48,11 +59,9 @@ export default function Sidebar() {
       <div className="p-5 border-b border-white/10">
         <Logo variante="isotipo" alto={32} />
         <p className="font-semibold text-sm mt-3">CAD Agrícola</p>
-        {usuario && (
-          <p className="text-xs text-white/50 mt-0.5">
-            {usuario.nombre} · {ROL_LABEL[usuario.rol]}
-          </p>
-        )}
+        <p className="text-xs text-white/50 mt-0.5">
+          {usuario ? `${usuario.nombre} · ${ROL_LABEL[usuario.rol]}` : '\u00A0'}
+        </p>
       </div>
 
       <nav className="flex-1 p-3 space-y-0.5">

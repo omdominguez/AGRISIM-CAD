@@ -11,8 +11,10 @@ export default function MapaPage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-semibold">Mapa de Parcelas</h1>
-          <p className="text-sm text-cad-apagado">Fincas y lotes importados desde SIMA (formato KML/KMZ).</p>
+          <h1 className="text-2xl font-bold text-cad-navy">Mapa de Parcelas</h1>
+          <p className="text-sm text-cad-apagado">
+            Todos los lotes cargados, coloreados por semáforo propio (área en pie, incidencias y frecuencia de visitas).
+          </p>
         </div>
         <ImportarKml />
       </div>
