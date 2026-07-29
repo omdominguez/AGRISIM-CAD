@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -6,7 +6,7 @@ import { RolUsuario } from '@prisma/client';
 import { SolicitudesService } from './solicitudes.service';
 import {
   CrearSolicitudDto, DefinirPaqueteDto, AprobarSolicitudDto, RechazarSolicitudDto,
-  CrearContratoDto, CrearDespachoDto, CrearInspeccionDto, CrearLiquidacionDto,
+  CrearContratoDto, CrearDespachoDto, CrearLiquidacionDto,
 } from './dto';
 
 const OPERATIVOS = [RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE, RolUsuario.TECNICO_CAMPO];
@@ -17,10 +17,10 @@ const APRUEBA = [RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE];
 export class SolicitudesController {
   constructor(private service: SolicitudesService) {}
 
-  // Junta Directiva incluida — solo lectura.
+  // Lectura abierta a todos los roles autenticados (incluye Junta Directiva).
   @Get()
-  listar() {
-    return this.service.listar();
+  listar(@Query('cicloId') cicloId?: string) {
+    return this.service.listar(cicloId);
   }
 
   @Get('portafolio/resumen')
@@ -28,32 +28,26 @@ export class SolicitudesController {
     return this.service.resumenPortafolio();
   }
 
-  // Página de Resumen de Ciclo — uso diario de técnicos y gerencia.
-  @Get('resumen/ciclos')
-  resumenCiclos() {
-    return this.service.resumenCiclos();
-  }
-
   @Get(':id')
   obtener(@Param('id') id: string) {
     return this.service.obtener(id);
   }
 
-  // Paso 1 — normalmente lo abre el técnico de campo tras visitar la finca.
+  // Paso 1 — lo abre el técnico tras evaluar la finca.
   @Post()
   @Roles(...OPERATIVOS)
   crear(@Body() dto: CrearSolicitudDto, @Req() req: any) {
     return this.service.crear(dto, req.user.userId);
   }
 
-  // Paso 2 — técnico define el paquete tecnológico y si hay anticipo.
+  // Paso 2 — paquete tecnológico y anticipo.
   @Post(':id/paquete')
   @Roles(...OPERATIVOS)
   definirPaquete(@Param('id') id: string, @Body() dto: DefinirPaqueteDto) {
     return this.service.definirPaquete(id, dto);
   }
 
-  // Paso 3a — solo Gerente/Master aprueban o rechazan.
+  // Paso 3a — aprobación (solo Gerente/Master).
   @Post(':id/aprobar')
   @Roles(...APRUEBA)
   aprobar(@Param('id') id: string, @Body() dto: AprobarSolicitudDto, @Req() req: any) {
@@ -80,17 +74,10 @@ export class SolicitudesController {
     return this.service.crearDespacho(id, dto, req.user.userId);
   }
 
-  // Paso 5 — inspección de campo, la registra el técnico responsable.
-  @Post(':id/inspecciones')
-  @Roles(...OPERATIVOS)
-  crearInspeccion(@Param('id') id: string, @Body() dto: CrearInspeccionDto, @Req() req: any) {
-    return this.service.crearInspeccion(id, dto, req.user.userId);
-  }
-
-  // Paso 6 — liquidación final. La cierra Gerente/Master (impacta cartera).
+  // Paso 6 — liquidación final (impacta cartera).
   @Post(':id/liquidar')
   @Roles(...APRUEBA)
-  liquidar(@Param('id') id: string, @Body() dto: CrearLiquidacionDto) {
-    return this.service.liquidar(id, dto);
+  liquidar(@Param('id') id: string, @Body() dto: CrearLiquidacionDto, @Req() req: any) {
+    return this.service.liquidar(id, dto, req.user.userId);
   }
 }

@@ -18,7 +18,7 @@ const bebasNeue = Bebas_Neue({
 });
 
 export const metadata = {
-  title: 'AgriSim CAD',
+  title: 'CAD Agrícola',
   description: 'Financiamiento a campo — Comercializadora Agrícola Domínguez',
 };
 

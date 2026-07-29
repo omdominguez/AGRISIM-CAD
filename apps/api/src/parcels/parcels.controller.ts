@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Param, Body, UseGuards, UseInterceptors, UploadedFile, Req,
+  Controller, Get, Post, Param, Query, UseGuards, UseInterceptors, UploadedFile, Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -14,8 +14,8 @@ export class ParcelsController {
   constructor(private service: ParcelsService) {}
 
   @Get()
-  listar() {
-    return this.service.listar();
+  listar(@Query('fincaId') fincaId?: string) {
+    return this.service.listar(fincaId);
   }
 
   // Solo técnicos de campo y roles administrativos pueden importar datos de SIMA.

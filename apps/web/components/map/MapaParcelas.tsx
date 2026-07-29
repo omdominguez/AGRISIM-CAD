@@ -8,8 +8,7 @@ import { apiFetch } from '../../lib/api';
 interface Parcela {
   id: string;
   nombreLote: string;
-  cultivo?: string;
-  areaHectareas?: number;
+  areaCalculadaHa?: number;
   geoJson: any;
   centroideLat?: number;
   centroideLng?: number;
@@ -42,7 +41,7 @@ export default function MapaParcelas() {
             <br />
             {p.finca?.productor?.nombre} — {p.finca?.nombre}
             <br />
-            {p.cultivo} · {p.areaHectareas} ha
+            {p.areaCalculadaHa} ha (según KML)
           </Popup>
         </GeoJSON>
       ))}

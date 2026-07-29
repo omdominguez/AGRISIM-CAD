@@ -22,6 +22,6 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 4000;
   await app.listen(port);
-  console.log(`AgriSim API corriendo en http://localhost:${port}/api`);
+  console.log(`CAD Agrícola API corriendo en http://localhost:${port}/api`);
 }
 bootstrap();

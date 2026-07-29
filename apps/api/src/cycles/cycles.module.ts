@@ -5,5 +5,6 @@ import { CyclesController } from './cycles.controller';
 @Module({
   providers: [CyclesService],
   controllers: [CyclesController],
+  exports: [CyclesService],
 })
 export class CyclesModule {}

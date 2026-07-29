@@ -1,8 +1,8 @@
 {
-  "name": "agrisim-cad",
+  "name": "cad-agricola",
   "private": true,
   "version": "0.1.0",
-  "description": "Sistema de simulación de financiamiento agrícola y gestión de campo — Comercializadora Agrícola Domínguez",
+  "description": "ERP de financiamiento a campo — Comercializadora Agrícola Domínguez",
   "workspaces": [
     "apps/api",
     "apps/web"

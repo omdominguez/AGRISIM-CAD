@@ -1,27 +1,33 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoSolicitud, TipoDespacho } from '@prisma/client';
+import { EstadoSolicitud, TipoDespacho, TipoMovimiento } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import {
   CrearSolicitudDto, DefinirPaqueteDto, AprobarSolicitudDto, RechazarSolicitudDto,
-  CrearContratoDto, CrearDespachoDto, CrearInspeccionDto, CrearLiquidacionDto,
+  CrearContratoDto, CrearDespachoDto, CrearLiquidacionDto,
 } from './dto';
 
 /**
- * Implementa el flujo de 6 pasos tal como opera CAD hoy en campo.
- * Cada método corresponde a un paso del diagrama; el `estado` del expediente
- * (SolicitudFinanciamiento.estado) avanza solo cuando el paso se completa,
- * así que el estado siempre refleja en qué punto real del proceso está el productor.
+ * EXPEDIENTE DE FINANCIAMIENTO — flujo real de CAD en 6 pasos.
+ * Cuelga de una participación (CicloProductor): un productor dentro de un ciclo.
+ *
+ * Cobro = (Costo Insumos × (1 + margen 30%)) + (Anticipo × (1 + recargo 5%))
+ *
+ * Cada despacho y cada liquidación generan automáticamente un movimiento en el
+ * estado de cuenta del productor, para que la cartera nunca dependa de que
+ * alguien recuerde registrarlo aparte.
  */
 @Injectable()
 export class SolicitudesService {
   constructor(private prisma: PrismaService) {}
 
-  listar() {
+  listar(cicloId?: string) {
     return this.prisma.solicitudFinanciamiento.findMany({
+      where: cicloId ? { cicloProductor: { cicloId } } : undefined,
       include: {
-        ciclo: { include: { productor: true, parcela: true } },
+        cicloProductor: {
+          include: { productor: true, ciclo: { select: { nombre: true, cultivo: true } } },
+        },
         itemsPaquete: true,
-        contrato: true,
         liquidacion: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -32,11 +38,16 @@ export class SolicitudesService {
     const solicitud = await this.prisma.solicitudFinanciamiento.findUnique({
       where: { id },
       include: {
-        ciclo: { include: { productor: true, parcela: true } },
+        cicloProductor: {
+          include: {
+            productor: true,
+            ciclo: true,
+            lotes: { include: { parcela: true } },
+          },
+        },
         itemsPaquete: true,
         contrato: true,
-        despachos: true,
-        inspecciones: { include: { tecnico: { select: { nombre: true } } } },
+        despachos: { orderBy: { fecha: 'asc' } },
         liquidacion: true,
       },
     });
@@ -46,12 +57,23 @@ export class SolicitudesService {
 
   // --- Paso 1: Evaluación y caracterización ---
   async crear(dto: CrearSolicitudDto, usuarioId: string) {
-    const existente = await this.prisma.solicitudFinanciamiento.findUnique({ where: { cicloId: dto.cicloId } });
-    if (existente) throw new BadRequestException('Este ciclo ya tiene un expediente de financiamiento abierto.');
+    const participacion = await this.prisma.cicloProductor.findUnique({
+      where: { id: dto.cicloProductorId },
+      include: { solicitud: true, lotes: true },
+    });
+    if (!participacion) throw new NotFoundException('Participación no encontrada.');
+    if (participacion.solicitud) {
+      throw new BadRequestException('Esta participación ya tiene un expediente abierto.');
+    }
+    if (participacion.lotes.length === 0) {
+      throw new BadRequestException(
+        'Agrega primero los lotes del productor (importados del KML) antes de abrir el financiamiento.',
+      );
+    }
 
     return this.prisma.solicitudFinanciamiento.create({
       data: {
-        cicloId: dto.cicloId,
+        cicloProductorId: dto.cicloProductorId,
         areaVerificadaHa: dto.areaVerificadaHa,
         evaluacionTecnica: dto.evaluacionTecnica,
         evaluadoPorId: usuarioId,
@@ -87,7 +109,7 @@ export class SolicitudesService {
   async aprobar(id: string, dto: AprobarSolicitudDto, usuarioId: string) {
     const solicitud = await this.obtener(id);
     if (solicitud.estado !== EstadoSolicitud.PAQUETE_DEFINIDO) {
-      throw new BadRequestException('Solo se puede aprobar un expediente con paquete tecnológico definido.');
+      throw new BadRequestException('Solo se aprueba un expediente con paquete tecnológico definido.');
     }
 
     return this.prisma.solicitudFinanciamiento.update({
@@ -103,6 +125,7 @@ export class SolicitudesService {
   }
 
   async rechazar(id: string, dto: RechazarSolicitudDto, usuarioId: string) {
+    await this.obtener(id);
     return this.prisma.solicitudFinanciamiento.update({
       where: { id },
       data: {
@@ -133,29 +156,57 @@ export class SolicitudesService {
   }
 
   // --- Paso 4: Despacho / desembolso ---
+  // Genera automáticamente el cargo en el estado de cuenta del productor,
+  // ya con el margen o recargo aplicado (que es lo que realmente se le cobra).
   async crearDespacho(id: string, dto: CrearDespachoDto, usuarioId: string) {
     const solicitud = await this.obtener(id);
-    const estadosValidos: EstadoSolicitud[] = [EstadoSolicitud.CONTRATO_FIRMADO, EstadoSolicitud.DESPACHADA];
+    const estadosValidos: EstadoSolicitud[] = [
+      EstadoSolicitud.CONTRATO_FIRMADO, EstadoSolicitud.DESPACHADA, EstadoSolicitud.EN_SEGUIMIENTO,
+    ];
     if (!estadosValidos.includes(solicitud.estado)) {
-      throw new BadRequestException('El contrato debe estar firmado antes de despachar insumos o girar el anticipo.');
+      throw new BadRequestException('El contrato debe estar firmado antes de despachar o girar anticipo.');
     }
 
-    // El valor real del despacho es la base de "gastado a la fecha" en Resumen de Ciclo:
-    // para anticipo en efectivo es el monto girado; para insumos, quien despacha confirma
-    // el valor de lo que efectivamente salió (puede ser parcial respecto al paquete completo).
-    const valorDespachado =
-      dto.tipo === TipoDespacho.ANTICIPO_EFECTIVO ? (dto.montoEfectivo ?? 0) : (dto.valorDespachado ?? 0);
+    const esAnticipo = dto.tipo === TipoDespacho.ANTICIPO_EFECTIVO;
+    const valorDespachado = esAnticipo ? (dto.montoEfectivo ?? 0) : (dto.valorDespachado ?? 0);
 
     if (valorDespachado <= 0) {
       throw new BadRequestException(
-        dto.tipo === TipoDespacho.ANTICIPO_EFECTIVO
-          ? 'Debes indicar el monto del anticipo girado.'
-          : 'Debes indicar el valor de los insumos despachados.',
+        esAnticipo ? 'Indica el monto del anticipo girado.' : 'Indica el valor de los insumos despachados.',
       );
     }
 
-    await this.prisma.despacho.create({
-      data: { ...dto, fecha: new Date(dto.fecha), solicitudId: id, responsableId: usuarioId, valorDespachado },
+    const despacho = await this.prisma.despacho.create({
+      data: {
+        tipo: dto.tipo,
+        fecha: new Date(dto.fecha),
+        etapaCultivo: dto.etapaCultivo,
+        montoEfectivo: dto.montoEfectivo,
+        itemsDespachadosJson: dto.itemsDespachadosJson,
+        valorDespachado,
+        solicitudId: id,
+        responsableId: usuarioId,
+      },
+    });
+
+    // Lo que se le carga al productor incluye el margen/recargo desde el día 1.
+    const factor = esAnticipo
+      ? 1 + Number(solicitud.recargoAnticipoPct)
+      : 1 + Number(solicitud.margenInsumosPct);
+
+    await this.prisma.movimientoCuenta.create({
+      data: {
+        productorId: solicitud.cicloProductor.productorId,
+        cicloProductorId: solicitud.cicloProductorId,
+        tipo: esAnticipo ? TipoMovimiento.CARGO_ANTICIPO : TipoMovimiento.CARGO_INSUMOS,
+        concepto: esAnticipo
+          ? `Anticipo en efectivo (+${(Number(solicitud.recargoAnticipoPct) * 100).toFixed(0)}%)`
+          : `Insumos despachados${dto.etapaCultivo ? ` — ${dto.etapaCultivo}` : ''} (+${(Number(solicitud.margenInsumosPct) * 100).toFixed(0)}%)`,
+        fecha: new Date(dto.fecha),
+        monto: valorDespachado * factor,
+        referencia: despacho.id,
+        registradoPorId: usuarioId,
+      },
     });
 
     return this.prisma.solicitudFinanciamiento.update({
@@ -165,29 +216,15 @@ export class SolicitudesService {
     });
   }
 
-  // --- Paso 5: Seguimiento técnico ---
-  async crearInspeccion(id: string, dto: CrearInspeccionDto, tecnicoId: string) {
-    await this.obtener(id);
-
-    await this.prisma.inspeccionCampo.create({
-      data: { ...dto, fecha: new Date(dto.fecha), solicitudId: id, tecnicoId },
-    });
-
-    return this.prisma.solicitudFinanciamiento.update({
-      where: { id },
-      data: { estado: EstadoSolicitud.EN_SEGUIMIENTO },
-      include: { inspecciones: true },
-    });
-  }
-
   // --- Paso 6: Liquidación y recuperación ---
-  // Cobro = (Costo Insumos x (1 + margenInsumos)) + (Anticipo x (1 + recargoAnticipo))
-  async liquidar(id: string, dto: CrearLiquidacionDto) {
+  async liquidar(id: string, dto: CrearLiquidacionDto, usuarioId: string) {
     const solicitud = await this.obtener(id);
+    if (solicitud.liquidacion) {
+      throw new BadRequestException('Este expediente ya fue liquidado.');
+    }
 
     const costoInsumosBase = solicitud.itemsPaquete.reduce(
-      (acc, item) => acc + Number(item.cantidad) * Number(item.costoUnitario),
-      0,
+      (acc, item) => acc + Number(item.cantidad) * Number(item.costoUnitario), 0,
     );
     const montoInsumosConMargen = costoInsumosBase * (1 + Number(solicitud.margenInsumosPct));
 
@@ -198,9 +235,18 @@ export class SolicitudesService {
     const gananciaCAD =
       (montoInsumosConMargen - costoInsumosBase) + (montoAnticipoConRecargo - montoAnticipoBase);
 
-    const saldoPendiente = dto.valorCosechaRecibida != null ? totalACobrar - dto.valorCosechaRecibida : null;
+    // Valor de la cosecha recibida: explícito, o calculado de producción × precio.
+    const valorCosecha = dto.valorCosechaRecibida
+      ?? (dto.produccionRealQq && dto.precioLiquidacionQq
+        ? dto.produccionRealQq * dto.precioLiquidacionQq
+        : null);
+
+    const saldoPendiente = valorCosecha != null ? totalACobrar - valorCosecha : null;
     const estadoCobranza =
-      saldoPendiente == null ? 'PENDIENTE' : saldoPendiente <= 0 ? 'COBRADO' : 'PARCIAL';
+      saldoPendiente == null ? 'PENDIENTE'
+      : saldoPendiente > 0 ? 'PARCIAL'
+      : saldoPendiente < 0 ? 'A_FAVOR_PRODUCTOR'
+      : 'COBRADO';
 
     await this.prisma.liquidacion.create({
       data: {
@@ -213,12 +259,31 @@ export class SolicitudesService {
         totalACobrar,
         gananciaCAD,
         produccionRealQq: dto.produccionRealQq,
-        valorCosechaRecibida: dto.valorCosechaRecibida,
+        precioLiquidacionQq: dto.precioLiquidacionQq,
+        valorCosechaRecibida: valorCosecha ?? undefined,
         saldoPendiente: saldoPendiente ?? undefined,
         estadoCobranza,
         notas: dto.notas,
       },
     });
+
+    // La cosecha entregada abona la deuda del productor.
+    if (valorCosecha != null && valorCosecha > 0) {
+      await this.prisma.movimientoCuenta.create({
+        data: {
+          productorId: solicitud.cicloProductor.productorId,
+          cicloProductorId: solicitud.cicloProductorId,
+          tipo: TipoMovimiento.ABONO_COSECHA,
+          concepto: dto.produccionRealQq
+            ? `Cosecha entregada: ${dto.produccionRealQq} qq`
+            : 'Cosecha entregada',
+          fecha: new Date(dto.fecha),
+          monto: valorCosecha,
+          referencia: `liquidacion:${id}`,
+          registradoPorId: usuarioId,
+        },
+      });
+    }
 
     return this.prisma.solicitudFinanciamiento.update({
       where: { id },
@@ -227,16 +292,21 @@ export class SolicitudesService {
     });
   }
 
-  // --- Dashboard de portafolio (Gerencia / Junta Directiva) ---
+  // --- Portafolio consolidado (Gerencia / Junta Directiva) ---
   async resumenPortafolio() {
     const solicitudes = await this.prisma.solicitudFinanciamiento.findMany({
-      include: { itemsPaquete: true, liquidacion: true },
+      include: { itemsPaquete: true, liquidacion: true, despachos: true },
     });
 
     let expuestoTotal = 0;
+    let desembolsadoTotal = 0;
     let gananciaEsperadaTotal = 0;
     let gananciaRealizada = 0;
     const porEstado: Record<string, number> = {};
+
+    const CERRADOS: EstadoSolicitud[] = [
+      EstadoSolicitud.LIQUIDADA, EstadoSolicitud.RECHAZADA, EstadoSolicitud.CANCELADA,
+    ];
 
     for (const s of solicitudes) {
       porEstado[s.estado] = (porEstado[s.estado] ?? 0) + 1;
@@ -246,85 +316,24 @@ export class SolicitudesService {
       );
       const anticipo = Number(s.montoAnticipoAprobado ?? s.montoAnticipoSolicitado ?? 0);
 
-      if (s.estado !== EstadoSolicitud.LIQUIDADA && s.estado !== EstadoSolicitud.RECHAZADA && s.estado !== EstadoSolicitud.CANCELADA) {
+      if (!CERRADOS.includes(s.estado)) {
         expuestoTotal += costoInsumos + anticipo;
-        gananciaEsperadaTotal += costoInsumos * Number(s.margenInsumosPct) + anticipo * Number(s.recargoAnticipoPct);
+        gananciaEsperadaTotal +=
+          costoInsumos * Number(s.margenInsumosPct) + anticipo * Number(s.recargoAnticipoPct);
+        desembolsadoTotal += s.despachos.reduce((acc, d) => acc + Number(d.valorDespachado), 0);
       }
 
-      if (s.liquidacion) {
-        gananciaRealizada += Number(s.liquidacion.gananciaCAD);
-      }
+      if (s.liquidacion) gananciaRealizada += Number(s.liquidacion.gananciaCAD);
     }
 
-    return { expuestoTotal, gananciaEsperadaTotal, gananciaRealizada, porEstado, totalExpedientes: solicitudes.length };
-  }
-
-  // --- Resumen de Ciclo (uso diario: técnicos, gerencia) ---
-  // Por cada ciclo con expediente en curso: cuánto se sembró, cuánto sigue
-  // efectivamente en pie (última visita del técnico), cuánto se ha
-  // desembolsado a la fecha, y la proyección de cosecha más reciente.
-  // Solo cuenta como "en curso" lo que ya salió de PLANIFICADO — antes de
-  // aprobación no hay nada que monitorear en campo todavía.
-  async resumenCiclos() {
-    const ESTADOS_EN_CURSO: EstadoSolicitud[] = [
-      EstadoSolicitud.APROBADA,
-      EstadoSolicitud.CONTRATO_FIRMADO,
-      EstadoSolicitud.DESPACHADA,
-      EstadoSolicitud.EN_SEGUIMIENTO,
-      EstadoSolicitud.COSECHADA,
-    ];
-
-    const solicitudes = await this.prisma.solicitudFinanciamiento.findMany({
-      where: { estado: { in: ESTADOS_EN_CURSO } },
-      include: {
-        ciclo: { include: { productor: true, parcela: { include: { finca: true } } } },
-        itemsPaquete: true,
-        despachos: true,
-        inspecciones: { orderBy: { fecha: 'desc' }, take: 1, include: { tecnico: { select: { nombre: true } } } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return solicitudes.map((s) => {
-      const ultimaInspeccion = s.inspecciones[0] ?? null;
-
-      const areaSembradaHa = Number(s.ciclo.areaHectareas);
-      const areaEfectivaHa = ultimaInspeccion?.areaEfectivaHa != null
-        ? Number(ultimaInspeccion.areaEfectivaHa)
-        : areaSembradaHa; // sin visitas todavía: se asume igual a lo sembrado
-
-      const costoInsumosBase = s.itemsPaquete.reduce(
-        (acc, i) => acc + Number(i.cantidad) * Number(i.costoUnitario), 0,
-      );
-      const anticipoAprobado = Number(s.montoAnticipoAprobado ?? 0);
-      const montoTotalAFinanciar = costoInsumosBase + anticipoAprobado;
-
-      const gastadoAFecha = s.despachos.reduce((acc, d) => acc + Number(d.valorDespachado), 0);
-
-      const rendimientoProyectadoQqHa = ultimaInspeccion?.rendimientoProyectadoQqHa != null
-        ? Number(ultimaInspeccion.rendimientoProyectadoQqHa)
-        : (s.ciclo.rendimientoEsperadoQqHa != null ? Number(s.ciclo.rendimientoEsperadoQqHa) : null);
-
-      const proyeccionCosechaQq = rendimientoProyectadoQqHa != null ? rendimientoProyectadoQqHa * areaEfectivaHa : null;
-
-      return {
-        solicitudId: s.id,
-        estado: s.estado,
-        productor: s.ciclo.productor.nombre,
-        finca: s.ciclo.parcela?.finca?.nombre ?? null,
-        cultivo: s.ciclo.cultivo,
-        areaSembradaHa,
-        areaEfectivaHa,
-        porcentajeAreaEnPie: areaSembradaHa > 0 ? areaEfectivaHa / areaSembradaHa : null,
-        montoTotalAFinanciar,
-        gastadoAFecha,
-        porcentajeDesembolsado: montoTotalAFinanciar > 0 ? gastadoAFecha / montoTotalAFinanciar : null,
-        rendimientoProyectadoQqHa,
-        proyeccionCosechaQq,
-        ultimaVisita: ultimaInspeccion
-          ? { fecha: ultimaInspeccion.fecha, tecnico: ultimaInspeccion.tecnico.nombre, estadoCultivo: ultimaInspeccion.estadoCultivo }
-          : null,
-      };
-    });
+    return {
+      totalExpedientes: solicitudes.length,
+      expuestoTotal,
+      desembolsadoTotal,
+      pendientePorDesembolsar: expuestoTotal - desembolsadoTotal,
+      gananciaEsperadaTotal,
+      gananciaRealizada,
+      porEstado,
+    };
   }
 }

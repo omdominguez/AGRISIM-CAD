@@ -69,8 +69,8 @@ export default function SolicitudesPage() {
         <tbody>
           {solicitudes.map((s) => (
             <tr key={s.id} className="border-t">
-              <td className="p-3">{s.ciclo?.productor?.nombre}</td>
-              <td className="p-3">{s.ciclo?.cultivo}</td>
+              <td className="p-3">{s.cicloProductor?.productor?.nombre}</td>
+              <td className="p-3">{s.cicloProductor?.ciclo?.cultivo}</td>
               <td className="p-3">
                 <span className={`px-2 py-0.5 rounded-full text-xs ${COLOR_ESTADO[s.estado] ?? 'bg-cad-superficie text-cad-apagado'}`}>
                   {ETIQUETA_ESTADO[s.estado] ?? s.estado}
