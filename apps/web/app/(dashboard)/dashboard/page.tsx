@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const [portafolio, setPortafolio] = useState<any | null>(null);
   const [ciclos, setCiclos] = useState<any[]>([]);
   const [noticias, setNoticias] = useState<any[]>([]);
+  const [commodities, setCommodities] = useState<any[]>([]);
   const [nombreUsuario, setNombreUsuario] = useState('');
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export default function DashboardPage() {
     apiFetch('/solicitudes/portafolio/resumen').then(setPortafolio).catch(() => {});
     apiFetch('/ciclos').then(setCiclos).catch(() => {});
     apiFetch('/noticias').then((n) => setNoticias(n.slice(0, 4))).catch(() => {});
+    apiFetch('/noticias/commodities').then(setCommodities).catch(() => {});
   }, []);
 
   const ciclosEnCurso = ciclos.filter((c) => c.estado === 'EN_CURSO' || c.estado === 'PLANIFICACION');
@@ -55,6 +57,41 @@ export default function DashboardPage() {
           valor={cartera ? `$${cartera.porPagar.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'}
           destacado
         />
+      </div>
+
+      {/* Precios de commodities agrícolas */}
+      <div className="mb-8">
+        <p className="font-semibold text-cad-navy mb-3">Commodities — referencia internacional</p>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {commodities.length === 0 && (
+            <p className="col-span-5 text-sm text-cad-apagado bg-white border border-cad-linea rounded-xl p-4">
+              Cargando precios...
+            </p>
+          )}
+          {commodities.map((c: any) => (
+            <div key={c.nombre} className="bg-white border border-cad-linea rounded-xl p-4">
+              <p className="text-xs text-cad-apagado">{c.nombre}</p>
+              {c.precioPorKgUsd != null ? (
+                <>
+                  <p className="text-lg font-semibold text-cad-navy mt-0.5">${c.precioPorKgUsd.toFixed(3)}<span className="text-xs font-normal text-cad-apagado">/kg</span></p>
+                  <div className="flex items-center justify-between mt-0.5">
+                    <p className="text-xs text-cad-apagado">ref: {c.unidadOriginal}</p>
+                    {c.variacionPct != null && (
+                      <p className={`text-xs font-medium ${c.variacionPct >= 0 ? 'text-cad-verde' : 'text-cad-danger'}`}>
+                        {c.variacionPct >= 0 ? '▲' : '▼'} {Math.abs(c.variacionPct * 100).toFixed(1)}%
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-cad-apagado mt-1">Sin dato</p>
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-cad-apagado mt-2">
+          Referencia de futuros CME/CBOT (Yahoo Finance) — precio internacional, no es el precio local de compra a productores.
+        </p>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">

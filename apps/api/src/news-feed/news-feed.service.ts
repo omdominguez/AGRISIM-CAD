@@ -25,6 +25,27 @@ const DESCRIPCION_CODIGO_CLIMA: Record<number, string> = {
 let cacheClima: { data: any[]; expira: number } | null = null;
 const TTL_CACHE_CLIMA_MS = 15 * 60 * 1000;
 
+// Commodities agrícolas relevantes — símbolos de futuros de Yahoo Finance.
+// "ZC=F" etc. son los tickers estándar de commodities en bolsas de EE.UU.
+// (CME/CBOT), la referencia internacional de precio para estos productos.
+// Cada uno cotiza en una unidad distinta (bushel, cwt, libra) — por eso
+// cada uno trae su propio factor de conversión a kilogramo.
+const COMMODITIES = [
+  // Maíz: cotiza en US¢/bushel. 1 bushel de maíz = 25.401 kg.
+  { simbolo: 'ZC=F', nombre: 'Maíz', unidadOriginal: 'US¢/bushel', enCentavos: true, kgPorUnidad: 25.401 },
+  // Arroz: cotiza en US$/cwt (quintal = 100 lb). 1 cwt = 45.3592 kg.
+  { simbolo: 'ZR=F', nombre: 'Arroz', unidadOriginal: 'US$/cwt', enCentavos: false, kgPorUnidad: 45.3592 },
+  // Azúcar: cotiza en US¢/libra. 1 libra = 0.453592 kg.
+  { simbolo: 'SB=F', nombre: 'Azúcar', unidadOriginal: 'US¢/lb', enCentavos: true, kgPorUnidad: 0.453592 },
+  // Soya: cotiza en US¢/bushel. 1 bushel de soya = 27.2155 kg.
+  { simbolo: 'ZS=F', nombre: 'Soya', unidadOriginal: 'US¢/bushel', enCentavos: true, kgPorUnidad: 27.2155 },
+  // Trigo: cotiza en US¢/bushel. 1 bushel de trigo = 27.2155 kg.
+  { simbolo: 'ZW=F', nombre: 'Trigo', unidadOriginal: 'US¢/bushel', enCentavos: true, kgPorUnidad: 27.2155 },
+];
+
+let cacheCommodities: { data: any[]; expira: number } | null = null;
+const TTL_CACHE_COMMODITIES_MS = 15 * 60 * 1000;
+
 /**
  * RUBROS de interés — cada uno con su búsqueda en Google News RSS.
  * Se buscan en inglés (mercado internacional de commodities) y en español
@@ -175,6 +196,57 @@ export class NewsFeedService implements OnModuleInit {
     );
 
     cacheClima = { data: resultados, expira: Date.now() + TTL_CACHE_CLIMA_MS };
+    return resultados;
+  }
+
+  /**
+   * Precios actuales de commodities agrícolas (maíz, arroz, azúcar, soya,
+   * trigo), vía la API pública de cotizaciones de Yahoo Finance — gratis,
+   * sin API key. Es la misma referencia de precio internacional (CME/CBOT)
+   * que se usa en mercados y noticias de commodities.
+   */
+  async preciosCommodities() {
+    if (cacheCommodities && cacheCommodities.expira > Date.now()) {
+      return cacheCommodities.data;
+    }
+
+    const resultados = await Promise.all(
+      COMMODITIES.map(async (c) => {
+        try {
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(c.simbolo)}`;
+          const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CADAgricolaBot/1.0)' } });
+          if (!res.ok) throw new Error(`Yahoo Finance respondió ${res.status}`);
+          const json = await res.json();
+          const meta = json?.chart?.result?.[0]?.meta;
+
+          const precioActual = meta?.regularMarketPrice ?? null;
+          const precioCierreAnterior = meta?.previousClose ?? meta?.chartPreviousClose ?? null;
+          const variacionPct = precioActual != null && precioCierreAnterior
+            ? (precioActual - precioCierreAnterior) / precioCierreAnterior
+            : null;
+
+          // Convierte a USD/kg sin importar si cotiza en centavos, dólares,
+          // bushels, cwt o libras — la variación % no cambia con la unidad,
+          // así que se recicla la misma calculada arriba.
+          const precioPorKg = precioActual != null
+            ? (c.enCentavos ? precioActual / 100 : precioActual) / c.kgPorUnidad
+            : null;
+
+          return {
+            nombre: c.nombre,
+            unidadOriginal: c.unidadOriginal,
+            precioOriginal: precioActual,
+            precioPorKgUsd: precioPorKg,
+            variacionPct,
+            moneda: meta?.currency ?? 'USD',
+          };
+        } catch {
+          return { nombre: c.nombre, unidadOriginal: c.unidadOriginal, precioOriginal: null, precioPorKgUsd: null, variacionPct: null, moneda: 'USD' };
+        }
+      }),
+    );
+
+    cacheCommodities = { data: resultados, expira: Date.now() + TTL_CACHE_COMMODITIES_MS };
     return resultados;
   }
 }

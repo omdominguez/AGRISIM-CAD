@@ -211,6 +211,18 @@ completa — funciona bien porque el feed de Google News es consistente, pero
 si Google cambia el formato del feed en el futuro, este parser es el primer
 lugar a revisar (`google-news-rss.util.ts`).
 
+## Commodities agrícolas en el Dashboard
+
+`/dashboard` muestra precio internacional de referencia (futuros CME/CBOT,
+vía Yahoo Finance — gratis, sin API key) de Maíz, Arroz, Azúcar, Soya y
+Trigo, con variación % del día. `GET /api/noticias/commodities`, cacheado
+15 minutos igual que el clima.
+
+**Importante**: es el precio internacional de referencia (el mismo que se
+usa como base en noticias y contratos de commodities), no el precio local
+al que CAD compra a sus productores — son cosas distintas y no hay que
+confundirlas en el reporte a Junta Directiva.
+
 ## Ticker de clima y noticias
 
 Barra que se desplaza horizontalmente arriba de **todas** las pantallas del

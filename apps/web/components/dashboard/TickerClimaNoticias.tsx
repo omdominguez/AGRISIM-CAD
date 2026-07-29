@@ -55,9 +55,9 @@ export default function TickerClimaNoticias() {
   ));
 
   const items = [...itemsClima, ...itemsNoticias];
-  // Velocidad de lectura constante: más items = animación más larga, en vez
-  // de una duración fija que se siente lenta con pocos items y rápida con muchos.
-  const duracionSegundos = Math.max(items.length * 9, 40);
+  // Velocidad de lectura: ni tan rápido que no dé tiempo de leer, ni tan
+  // lento que se sienta pegado. Ajustable acá si hace falta afinar más.
+  const duracionSegundos = Math.min(Math.max(items.length * 3, 18), 55);
 
   if (items.length === 0) {
     return null; // sin datos todavía (ej. Open-Meteo no respondió) — no mostrar una barra vacía

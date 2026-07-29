@@ -27,6 +27,11 @@ export class NewsFeedController {
     return this.service.climaZonasAgricolas();
   }
 
+  @Get('commodities')
+  preciosCommodities() {
+    return this.service.preciosCommodities();
+  }
+
   // Dispara la ingesta manual (además de la automática cada 6h).
   @Post('actualizar')
   actualizar() {
