@@ -237,6 +237,7 @@ export class CyclesService {
 
       return {
         cicloProductorId: p.id,
+        productorId: p.productor.id,
         productor: p.productor.nombre,
         estadoSolicitud: p.solicitud?.estado ?? null,
         cantidadLotes: p.lotes.length,
@@ -285,5 +286,119 @@ export class CyclesService {
       produccionProyectadaQq,
       detalleProductores,
     };
+  }
+
+  /**
+   * COMPARATIVO ENTRE CICLOS
+   * Un KPI por ciclo (ha financiadas, rendimiento/ha, ganancia) y la
+   * variación % contra el ciclo INMEDIATO ANTERIOR del mismo cultivo —
+   * comparar Norte Verano de frijol contra el Norte Verano anterior de
+   * frijol, no contra un ciclo de maíz que quedó en medio.
+   */
+  async comparativoCiclos(cultivo?: string) {
+    const ciclos = await this.prisma.ciclo.findMany({
+      where: cultivo ? { cultivo } : undefined,
+      include: {
+        participaciones: {
+          include: {
+            lotes: true,
+            solicitud: { include: { itemsPaquete: true, liquidacion: true, despachos: true } },
+            inspecciones: { orderBy: { fecha: 'desc' }, take: 1 },
+          },
+        },
+      },
+      orderBy: { fechaInicio: 'asc' },
+    });
+
+    const filas = ciclos.map((c) => {
+      let haSembradas = 0;
+      let haEfectivas = 0;
+      let montoFinanciado = 0;
+      let desembolsado = 0;
+      let gananciaRealizada = 0;
+      let produccionRealQq = 0;
+      let produccionProyectadaQq = 0;
+      let haConLiquidacion = 0;
+
+      for (const p of c.participaciones) {
+        const haLote = p.lotes.reduce((acc, l) => acc + Number(l.areaSembradaHa), 0);
+        haSembradas += haLote;
+
+        const ultima = p.inspecciones[0] ?? null;
+        const haEf = ultima?.areaEfectivaHa != null ? Number(ultima.areaEfectivaHa) : haLote;
+        haEfectivas += haEf;
+
+        if (p.solicitud) {
+          const costoInsumos = p.solicitud.itemsPaquete.reduce(
+            (acc, i) => acc + Number(i.cantidad) * Number(i.costoUnitario), 0,
+          );
+          montoFinanciado += costoInsumos + Number(p.solicitud.montoAnticipoAprobado ?? 0);
+          desembolsado += p.solicitud.despachos.reduce((acc, d) => acc + Number(d.valorDespachado), 0);
+
+          if (p.solicitud.liquidacion) {
+            gananciaRealizada += Number(p.solicitud.liquidacion.gananciaCAD);
+            if (p.solicitud.liquidacion.produccionRealQq) {
+              produccionRealQq += Number(p.solicitud.liquidacion.produccionRealQq);
+              haConLiquidacion += haEf;
+            }
+          }
+        }
+
+        const rendProyectado = ultima?.rendimientoProyectadoQqHa != null
+          ? Number(ultima.rendimientoProyectadoQqHa) : null;
+        if (rendProyectado != null) produccionProyectadaQq += rendProyectado * haEf;
+      }
+
+      // Rendimiento real/ha solo se puede calcular donde ya hubo liquidación;
+      // si nada se ha liquidado, se muestra null en vez de un cero engañoso.
+      const rendimientoRealQqHa = haConLiquidacion > 0 ? produccionRealQq / haConLiquidacion : null;
+      const rendimientoProyectadoQqHa = haEfectivas > 0 ? produccionProyectadaQq / haEfectivas : null;
+
+      return {
+        cicloId: c.id,
+        nombre: c.nombre,
+        tipo: c.tipo,
+        cultivo: c.cultivo,
+        fechaInicio: c.fechaInicio,
+        estado: c.estado,
+        productoresInscritos: c.participaciones.length,
+        haSembradas,
+        haEfectivas,
+        montoFinanciado,
+        desembolsado,
+        montoFinanciadoPorHa: haSembradas > 0 ? montoFinanciado / haSembradas : null,
+        gananciaRealizada,
+        rendimientoRealQqHa,
+        rendimientoProyectadoQqHa,
+      };
+    });
+
+    // Variación % contra el ciclo anterior del MISMO cultivo.
+    const porCultivo = new Map<string, typeof filas>();
+    for (const f of filas) {
+      const lista = porCultivo.get(f.cultivo) ?? [];
+      lista.push(f);
+      porCultivo.set(f.cultivo, lista);
+    }
+
+    const variacion = (actual: number | null, anterior: number | null) => {
+      if (actual == null || anterior == null || anterior === 0) return null;
+      return (actual - anterior) / anterior;
+    };
+
+    for (const lista of porCultivo.values()) {
+      for (let i = 0; i < lista.length; i++) {
+        const anterior = i > 0 ? lista[i - 1] : null;
+        (lista[i] as any).variacion = anterior ? {
+          haSembradasPct: variacion(lista[i].haSembradas, anterior.haSembradas),
+          montoFinanciadoPorHaPct: variacion(lista[i].montoFinanciadoPorHa, anterior.montoFinanciadoPorHa),
+          rendimientoRealQqHaPct: variacion(lista[i].rendimientoRealQqHa, anterior.rendimientoRealQqHa),
+          gananciaRealizadaPct: variacion(lista[i].gananciaRealizada, anterior.gananciaRealizada),
+          cicloAnteriorNombre: anterior.nombre,
+        } : null;
+      }
+    }
+
+    return filas.sort((a, b) => new Date(b.fechaInicio).getTime() - new Date(a.fechaInicio).getTime());
   }
 }

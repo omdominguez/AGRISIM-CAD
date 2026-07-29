@@ -60,4 +60,83 @@ export class ProducersService {
       orderBy: { nombre: 'asc' },
     });
   }
+
+  /**
+   * DESEMPEÑO HISTÓRICO POR LOTE
+   * Cada parcela física puede haberse sembrado en varios ciclos distintos
+   * (Parcela persiste; LoteSiembra es la instancia por ciclo). Esto arma
+   * el historial de cada lote: rendimiento real/proyectado, insumos usados
+   * en ese ciclo, y en qué % de siembra logró — para ver qué le funcionó
+   * mejor a ese lote y qué se hizo distinto entre un ciclo y otro.
+   */
+  async desempenoLotes(productorId: string) {
+    await this.obtener(productorId);
+
+    const lotesSiembra = await this.prisma.loteSiembra.findMany({
+      where: { cicloProductor: { productorId } },
+      include: {
+        parcela: { select: { id: true, nombreLote: true } },
+        cicloProductor: {
+          include: {
+            ciclo: { select: { id: true, nombre: true, cultivo: true, fechaInicio: true } },
+            solicitud: { include: { itemsPaquete: true, liquidacion: true } },
+          },
+        },
+        inspecciones: { orderBy: { fecha: 'desc' }, take: 1 },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const filas = lotesSiembra.map((l) => {
+      const ultima = l.inspecciones[0] ?? null;
+      const areaEfectivaHa = ultima?.areaEfectivaHa != null ? Number(ultima.areaEfectivaHa) : Number(l.areaSembradaHa);
+
+      const liquidacion = l.cicloProductor.solicitud?.liquidacion ?? null;
+      // La liquidación es por participación (puede cubrir varios lotes del mismo
+      // productor), así que este rendimiento real es exacto cuando el productor
+      // tiene un solo lote en el ciclo, y aproximado cuando tiene varios.
+      const rendimientoRealQqHa = liquidacion?.produccionRealQq && areaEfectivaHa > 0
+        ? Number(liquidacion.produccionRealQq) / areaEfectivaHa // aproximado si el productor tiene 1 solo lote
+        : null;
+
+      const rendimientoProyectadoQqHa = ultima?.rendimientoProyectadoQqHa != null
+        ? Number(ultima.rendimientoProyectadoQqHa) : null;
+
+      const insumos = l.cicloProductor.solicitud?.itemsPaquete.map((i) => ({
+        nombreInsumo: i.nombreInsumo,
+        categoria: i.categoria,
+        cantidad: Number(i.cantidad),
+        unidad: i.unidad,
+        costoUnitario: Number(i.costoUnitario),
+      })) ?? [];
+
+      return {
+        loteSiembraId: l.id,
+        parcela: l.parcela.nombreLote,
+        ciclo: l.cicloProductor.ciclo.nombre,
+        cicloId: l.cicloProductor.ciclo.id,
+        cultivo: l.cicloProductor.ciclo.cultivo,
+        fechaInicio: l.cicloProductor.ciclo.fechaInicio,
+        areaSembradaHa: Number(l.areaSembradaHa),
+        areaEfectivaHa,
+        porcentajeAreaEnPie: Number(l.areaSembradaHa) > 0 ? areaEfectivaHa / Number(l.areaSembradaHa) : null,
+        rendimientoRealQqHa,
+        rendimientoProyectadoQqHa,
+        tieneLiquidacion: !!liquidacion,
+        insumosUsados: insumos,
+        costoInsumosHa: insumos.length > 0 && areaEfectivaHa > 0
+          ? insumos.reduce((acc, i) => acc + i.cantidad * i.costoUnitario, 0) / areaEfectivaHa
+          : null,
+      };
+    });
+
+    // Ranking: primero por rendimiento real (si existe), luego por proyectado.
+    const ranking = [...filas].sort((a, b) => {
+      const va = a.rendimientoRealQqHa ?? a.rendimientoProyectadoQqHa ?? -1;
+      const vb = b.rendimientoRealQqHa ?? b.rendimientoProyectadoQqHa ?? -1;
+      return vb - va;
+    });
+
+    return { totalLotes: filas.length, ranking };
+  }
 }

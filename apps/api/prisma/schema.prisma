@@ -74,7 +74,8 @@ model Productor {
   cedulaRif     String? @unique
   telefono      String?
   email         String?
-  ubicacionZona String? // municipio / región
+  estado    String? // estado de Venezuela (lista cerrada)
+  municipio String? // municipio dentro del estado (lista cerrada)
   activo        Boolean @default(true)
 
   // Scoring interno de riesgo (IDP), alimentado por el histórico de cumplimiento.

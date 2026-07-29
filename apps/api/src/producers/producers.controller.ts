@@ -28,6 +28,11 @@ export class ProducersController {
     return this.service.listarFincas(id);
   }
 
+  @Get(':id/desempeno-lotes')
+  desempenoLotes(@Param('id') id: string) {
+    return this.service.desempenoLotes(id);
+  }
+
   @Post()
   @Roles(...OPERATIVOS)
   crear(@Body() dto: CrearProductorDto) {

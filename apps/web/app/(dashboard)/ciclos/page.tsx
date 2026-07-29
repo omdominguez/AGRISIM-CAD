@@ -30,7 +30,17 @@ export default function CiclosPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-cad-navy mb-1">Ciclos</h1>
+      <div className="flex items-start justify-between mb-1">
+        <h1 className="text-2xl font-bold text-cad-navy">Ciclos</h1>
+        <div className="flex gap-3">
+          <Link href="/ciclos/comparativo" className="text-sm text-cad-naranja hover:underline self-center">
+            Ver comparativo entre ciclos →
+          </Link>
+          <Link href="/ciclos/nuevo" className="bg-cad-naranja text-white text-sm font-medium rounded px-4 py-2 hover:brightness-95 transition">
+            + Nuevo Ciclo
+          </Link>
+        </div>
+      </div>
       <p className="text-sm text-cad-apagado mb-6">
         Cada ciclo agrupa a los productores financiados de una campaña, con sus lotes y seguimiento.
       </p>

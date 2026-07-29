@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -17,6 +17,11 @@ export class CyclesController {
   @Get()
   listar() {
     return this.service.listar();
+  }
+
+  @Get('comparativo')
+  comparativoCiclos(@Query('cultivo') cultivo?: string) {
+    return this.service.comparativoCiclos(cultivo);
   }
 
   @Get(':id')
