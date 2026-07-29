@@ -26,17 +26,17 @@ export default function ProductoresPage() {
   useEffect(recargar, []);
 
   const estadosConDatos = useMemo(
-    () => [...new Set(productores.map((p) => p.estado).filter(Boolean))].sort(),
+    () => Array.from(new Set(productores.map((p) => p.estado).filter(Boolean))).sort(),
     [productores],
   );
 
   const municipiosConDatos = useMemo(
-    () => [...new Set(
+    () => Array.from(new Set(
       productores
         .filter((p) => !filtroEstado || p.estado === filtroEstado)
         .map((p) => p.municipio)
         .filter(Boolean),
-    )].sort(),
+    )).sort(),
     [productores, filtroEstado],
   );
 

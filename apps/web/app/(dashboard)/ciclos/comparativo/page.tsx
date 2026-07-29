@@ -36,7 +36,7 @@ export default function ComparativoCiclosPage() {
     apiFetch(`/ciclos/comparativo${query}`).then(setFilas).catch((e) => setError(e.message));
   }, [cultivo]);
 
-  const cultivosDisponibles = [...new Set(filas.map((f) => f.cultivo))];
+  const cultivosDisponibles = Array.from(new Set(filas.map((f) => f.cultivo)));
 
   return (
     <div>
