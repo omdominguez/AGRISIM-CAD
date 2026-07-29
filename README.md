@@ -189,6 +189,51 @@ Pendiente de UI (el backend ya lo soporta vía API): definir paquete
 tecnológico, aprobar/contratar/despachar el expediente, y registrar
 inspecciones de campo — son los siguientes formularios a construir.
 
+## Noticias reales por rubro (Google News RSS, sin API key)
+
+`/noticias` ya no depende de carga manual — trae noticias reales vía el RSS
+público de Google News (gratuito, sin key), buscando por rubro:
+
+- **Frijol Mung** — mercado internacional (inglés) + Venezuela (español)
+- **Caraota Negra** — ídem
+- **Maíz** — ídem
+- **Mercado General** — leguminosas en general + agricultura Venezuela/llanos
+
+Corre sola al arrancar el backend y cada 6 horas mientras siga corriendo
+(`NewsFeedService.onModuleInit`), y también se puede forzar con el botón
+"↻ Actualizar noticias" en la UI (`POST /api/noticias/actualizar`). Los
+duplicados se evitan por URL (`NoticiaFeed.url` es `@unique`).
+
+Filtro por rubro y por región (Venezuela / Internacional / ambas) en la UI.
+
+**Nota realista**: es un parser simple de RSS por regex, no una librería XML
+completa — funciona bien porque el feed de Google News es consistente, pero
+si Google cambia el formato del feed en el futuro, este parser es el primer
+lugar a revisar (`google-news-rss.util.ts`).
+
+## Ticker de clima y noticias
+
+Barra que se desplaza horizontalmente arriba de **todas** las pantallas del
+dashboard (no solo en `/noticias`), con:
+
+- **Clima en vivo** de 6 zonas llaneras de interés agrícola (Barinas,
+  Guanare, San Fernando de Apure, San Carlos, Calabozo, Acarigua) — vía
+  Open-Meteo, gratuito y sin API key. `GET /api/noticias/clima`, cacheado
+  15 minutos en el backend para no golpear la API externa en cada carga.
+- **Noticias cacheadas** del módulo `/noticias` (precios de mercado,
+  política agrícola) — las que ya existían, sin duplicar el clima.
+
+El módulo `/noticias` sigue siendo independiente y completo; el ticker es
+un resumen de acceso rápido, con un botón "Ver todas →" que lleva ahí. Si
+no hay ningún dato disponible (ej. sin conexión a Open-Meteo), el ticker
+simplemente no se muestra — no se inventa contenido de relleno.
+
+**Pendiente real**: las noticias de cultivos en Venezuela (no el clima)
+siguen sin una fuente automática — eso sigue requiriendo NewsAPI.org u
+otra API con key, como ya estaba anotado en la Fase 4 del roadmap. Lo que
+se agregó aquí es solo el clima en vivo; las noticias siguen siendo carga
+manual hasta que se conecte esa fuente.
+
 ## Mapa con semáforo (estilo SIMA)
 
 `/mapa` ahora muestra cada lote coloreado por un semáforo propio — verde,

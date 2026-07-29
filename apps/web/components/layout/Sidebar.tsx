@@ -13,6 +13,7 @@ interface ItemNav {
 }
 
 const NAV: ItemNav[] = [
+  { href: '/dashboard', label: 'Dashboard' },
   { href: '/ciclos', label: 'Ciclos' },
   { href: '/productores', label: 'Productores' },
   { href: '/solicitudes', label: 'Financiamientos' },

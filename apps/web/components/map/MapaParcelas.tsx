@@ -45,12 +45,18 @@ function AutoEncuadre({ parcelas }: { parcelas: ParcelaMapa[] }) {
 
   useEffect(() => {
     if (parcelas.length === 0) return;
-    const puntos: [number, number][] = parcelas
-      .filter((p) => p.centroideLat != null && p.centroideLng != null)
-      .map((p) => [p.centroideLat as number, p.centroideLng as number]);
 
-    if (puntos.length > 0) {
-      map.fitBounds(L.latLngBounds(puntos), { padding: [40, 40], maxZoom: 15 });
+    // Se usa la geometría real de cada polígono (no el centroide guardado)
+    // para calcular los límites — así el encuadre siempre coincide
+    // exactamente con lo que se está dibujando en el mapa, sin depender
+    // de que el centroide se haya calculado bien al crear la parcela.
+    const capaTemporal = L.geoJSON(
+      parcelas.map((p) => ({ type: 'Feature', geometry: p.geoJson, properties: {} })) as any,
+    );
+    const limites = capaTemporal.getBounds();
+
+    if (limites.isValid()) {
+      map.fitBounds(limites, { padding: [50, 50], maxZoom: 16 });
     }
   }, [parcelas, map]);
 
@@ -60,6 +66,7 @@ function AutoEncuadre({ parcelas }: { parcelas: ParcelaMapa[] }) {
 export default function MapaParcelas() {
   const [parcelas, setParcelas] = useState<ParcelaMapa[]>([]);
   const [capa, setCapa] = useState<'mapa' | 'satelite'>('mapa');
+  const [error, setError] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<Record<string, boolean>>({
     VERDE: true, AMARILLO: true, ROJO: true, SIN_CICLO: true,
   });
@@ -67,13 +74,24 @@ export default function MapaParcelas() {
   useEffect(() => {
     apiFetch('/parcelas/mapa')
       .then(setParcelas)
-      .catch((err) => console.error('Error cargando parcelas:', err));
+      .catch((err) => setError(err.message ?? 'No se pudieron cargar las parcelas.'));
   }, []);
 
   const visibles = parcelas.filter((p) => filtros[p.semaforo]);
 
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div>
+      {error && (
+        <div className="bg-cad-danger/10 border border-cad-danger/30 text-cad-danger text-sm rounded-lg p-3 mb-4">
+          No se pudo cargar el mapa: {error}
+        </div>
+      )}
+      {!error && parcelas.length === 0 && (
+        <div className="bg-cad-ambar/10 border border-cad-ambar/30 text-cad-tinta text-sm rounded-lg p-3 mb-4">
+          No hay parcelas cargadas todavía. Se agregan desde la ficha de cada productor.
+        </div>
+      )}
+      <div className="grid grid-cols-4 gap-4">
       <div className="bg-white border border-cad-linea rounded-xl p-4 h-fit">
         <p className="text-xs font-medium text-cad-apagado uppercase mb-3">Filtros</p>
         {(['VERDE', 'AMARILLO', 'ROJO', 'SIN_CICLO'] as const).map((clave) => (
@@ -157,6 +175,7 @@ export default function MapaParcelas() {
             </GeoJSON>
           ))}
         </MapContainer>
+      </div>
       </div>
     </div>
   );

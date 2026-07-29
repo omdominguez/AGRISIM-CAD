@@ -1,3 +1,16 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Ticker de clima y noticias — desplazamiento horizontal continuo, lento
+   a propósito para que dé tiempo de leer sin tener que perseguirlo. */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-ticker {
+  animation: ticker-scroll var(--ticker-duracion, 140s) linear infinite;
+}
+.animate-ticker:hover {
+  animation-play-state: paused;
+}

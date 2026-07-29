@@ -23,7 +23,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       guardarSesion(data.access_token, data.usuario);
-      router.push('/ciclos');
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.message ?? 'No se pudo iniciar sesión.');
     } finally {

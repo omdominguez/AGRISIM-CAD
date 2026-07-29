@@ -523,8 +523,9 @@ model NoticiaFeed {
   titulo           String
   resumen          String
   fuente           String
-  url              String?
+  url              String?     @unique
   region           String?
+  rubro            String?     // "Frijol Mung", "Caraota Negra", "Maíz", "Mercado General"...
   relevancia       Int         @default(1)
   fechaPublicacion DateTime
   createdAt        DateTime    @default(now())

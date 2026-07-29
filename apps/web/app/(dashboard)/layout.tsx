@@ -1,4 +1,5 @@
 import Sidebar from '../../components/layout/Sidebar';
+import TickerClimaNoticias from '../../components/dashboard/TickerClimaNoticias';
 
 // NOTA: este layout asume que la validación de sesión (redirigir a /login si
 // no hay token válido) se implementa vía middleware.ts en la raíz de apps/web
@@ -8,7 +9,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex">
       <Sidebar />
-      <main className="flex-1 p-8 bg-cad-superficie min-h-screen">{children}</main>
+      <div className="flex-1 flex flex-col min-h-screen min-w-0">
+        <TickerClimaNoticias />
+        <main className="flex-1 p-8 bg-cad-superficie">{children}</main>
+      </div>
     </div>
   );
 }
