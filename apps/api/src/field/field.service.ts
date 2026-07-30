@@ -75,14 +75,18 @@ export class FieldService {
       ? Number(lote.areaSembradaHa)
       : participacion.lotes.reduce((acc, l) => acc + Number(l.areaSembradaHa), 0);
 
-    const poblacion = this.calcularPoblacion({
-      distanciaSurcosM: lote?.distanciaSurcosM ? Number(lote.distanciaSurcosM) : null,
-      densidadObjetivoPlantasPorM: lote?.densidadObjetivoPlantasPorM
-        ? Number(lote.densidadObjetivoPlantasPorM) : null,
-      plantasPorMetroLineal: dto.plantasPorMetroLineal ?? null,
-      areaSembradaHa,
-      areaEfectivaHa: dto.areaEfectivaHa ?? null,
-    });
+    // El conteo de población solo tiene sentido en visitas de seguimiento —
+    // una visita de preparación de tierra o siembra no trae ese dato.
+    const poblacion = dto.tipoVisita === 'SEGUIMIENTO' || dto.tipoVisita === 'COSECHA'
+      ? this.calcularPoblacion({
+          distanciaSurcosM: lote?.distanciaSurcosM ? Number(lote.distanciaSurcosM) : null,
+          densidadObjetivoPlantasPorM: lote?.densidadObjetivoPlantasPorM
+            ? Number(lote.densidadObjetivoPlantasPorM) : null,
+          plantasPorMetroLineal: dto.plantasPorMetroLineal ?? null,
+          areaSembradaHa,
+          areaEfectivaHa: dto.areaEfectivaHa ?? null,
+        })
+      : { plantasObjetivoTotal: null, plantasEstimadasTotal: null, porcentajeLogroPoblacion: null };
 
     return this.prisma.inspeccionCampo.create({
       data: {
@@ -90,6 +94,13 @@ export class FieldService {
         loteId: dto.loteId,
         fecha: new Date(dto.fecha),
         tecnicoId,
+        tipoVisita: dto.tipoVisita,
+        prepArado: dto.prepArado,
+        prepRastra: dto.prepRastra,
+        prepNivelacion: dto.prepNivelacion,
+        prepHumedadAdecuada: dto.prepHumedadAdecuada,
+        metodoSiembra: dto.metodoSiembra,
+        profundidadSiembraCm: dto.profundidadSiembraCm,
         areaEfectivaHa: dto.areaEfectivaHa,
         plantasPorMetroLineal: dto.plantasPorMetroLineal,
         plantasObjetivoTotal: poblacion.plantasObjetivoTotal,

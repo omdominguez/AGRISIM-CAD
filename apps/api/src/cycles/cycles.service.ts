@@ -249,6 +249,8 @@ export class CyclesService {
         rendimientoProyectadoQqHa: rendProyectado,
         produccionProyectadaQq: produccionQq,
         ultimaVisita: ultima?.fecha ?? null,
+        tipoUltimaVisita: ultima?.tipoVisita ?? null,
+        estadoFenologico: ultima?.estadoFenologico ?? null,
       };
     });
 

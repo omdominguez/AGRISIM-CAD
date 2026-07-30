@@ -263,12 +263,32 @@ model LoteSiembra {
 // Lo que el técnico carga en cada visita. Alimenta el dashboard con data real.
 // ============================================================================
 
+// Estado del cultivo a lo largo de todo el ciclo — desde antes de sembrar
+// hasta la cosecha. V1/V2/V3... son las etapas vegetativas por número de
+// hojas, la forma estándar en que un técnico agrónomo describe el avance.
 enum EstadoFenologico {
+  PREPARACION_TIERRA
+  SIEMBRA
   EMERGENCIA
-  DESARROLLO_VEGETATIVO
+  V1
+  V2
+  V3
+  V4
+  V5
+  V6_O_MAS
   FLORACION
   LLENADO_GRANO
   MADURACION
+  COSECHA
+}
+
+// El tipo de visita determina qué datos tiene sentido pedirle al técnico —
+// una visita de preparación de tierra no necesita conteo de plantas, y una
+// de seguimiento vegetativo no necesita checklist de arado.
+enum TipoVisita {
+  PREPARACION_TIERRA
+  SIEMBRA
+  SEGUIMIENTO
   COSECHA
 }
 
@@ -291,10 +311,24 @@ model InspeccionCampo {
   tecnicoId String
   tecnico   Usuario  @relation("InspeccionTecnico", fields: [tecnicoId], references: [id])
 
-  // --- Área real en pie ---
+  // El tipo de visita decide qué campos de abajo aplican — el formulario
+  // en pantalla solo muestra los relevantes para cada tipo.
+  tipoVisita TipoVisita @default(SEGUIMIENTO)
+
+  // --- Solo aplica si tipoVisita = PREPARACION_TIERRA ---
+  prepArado             Boolean?
+  prepRastra            Boolean?
+  prepNivelacion        Boolean?
+  prepHumedadAdecuada   Boolean?
+
+  // --- Solo aplica si tipoVisita = SIEMBRA ---
+  metodoSiembra        String?  // ej. "Mecanizada", "Manual"
+  profundidadSiembraCm Decimal? @db.Decimal(5, 2)
+
+  // --- Área real en pie (SEGUIMIENTO / COSECHA) ---
   areaEfectivaHa Decimal? @db.Decimal(10, 4)
 
-  // --- Población de plantas ---
+  // --- Población de plantas (SEGUIMIENTO) ---
   // El técnico cuenta plantas en un metro lineal; el sistema extrapola.
   plantasPorMetroLineal    Decimal? @db.Decimal(6, 2)
   plantasEstimadasTotal    Decimal? @db.Decimal(14, 0)
@@ -304,7 +338,7 @@ model InspeccionCampo {
   estadoFenologico   EstadoFenologico?
   usoAdecuadoInsumos Boolean?
 
-  // --- Proyección de cosecha actualizada en esta visita ---
+  // --- Proyección de cosecha actualizada en esta visita (SEGUIMIENTO / COSECHA) ---
   rendimientoProyectadoQqHa Decimal? @db.Decimal(10, 2)
 
   observaciones String?

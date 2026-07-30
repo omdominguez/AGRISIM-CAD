@@ -228,6 +228,54 @@ de **Lotes** que reemplaza lo que antes eran dos secciones separadas
   `desempeno-lotes` por `parcelaId`. Si todavía no se ha sembrado, dice
   "Sin siembra registrada todavía" en vez de forzar un dato que no existe.
 
+## Ficha de participación — donde el técnico registra sus visitas
+
+El backend del seguimiento de campo (inspecciones, incidencias, cálculo de
+población de plantas) ya existía, pero no había pantalla para usarlo. Ahora sí:
+
+- **`/ciclos/participaciones/:id`** — la ficha de "este productor, en este
+  ciclo": sus lotes, el estado del financiamiento, y el historial completo
+  de visitas.
+- Se entra haciendo click en el nombre del productor desde la tabla de
+  "Productores del ciclo" en el detalle del ciclo (`/ciclos/:id`).
+- **"+ Registrar visita"** abre el formulario completo: fecha, lote
+  (opcional — puede ser una visita a toda la participación), área efectiva,
+  plantas por metro lineal (el sistema calcula el % de logro de población
+  solo, usando la densidad objetivo del lote), estado fenológico, uso
+  adecuado de insumos, rendimiento proyectado, observaciones, e
+  **incidencias** (plagas/enfermedades) como lista dinámica — se agregan y
+  quitan filas sin recargar la página.
+- El historial de visitas se muestra abajo, con el % de población coloreado
+  (rojo si está por debajo del 85% del objetivo) y las incidencias como
+  etiquetas, más severas en rojo.
+
+Esta es la pantalla de mayor uso diario para el técnico — con esto, el
+seguimiento de campo completo ya tiene interfaz de punta a punta.
+
+## Visitas por tipo — no todas piden lo mismo
+
+El formulario de "Registrar visita" ahora empieza eligiendo el **tipo**, y
+solo muestra los campos que tienen sentido para ese tipo:
+
+- **Preparación de tierra** — checklist simple (arado, rastra, nivelación,
+  humedad del suelo), sin pedir conteo de plantas que todavía no existen.
+- **Siembra** — método (mecanizada/manual) y profundidad.
+- **Seguimiento del cultivo** — los campos completos de antes: población de
+  plantas, estado del cultivo, incidencias, rendimiento proyectado.
+- **Cosecha** — cierre del ciclo en campo.
+
+**Estado del cultivo ampliado**: además de las etapas genéricas de antes,
+ahora incluye `PREPARACION_TIERRA`, `SIEMBRA`, y las etapas vegetativas
+`V1` a `V6_O_MAS` — la forma en que un técnico agrónomo real describe el
+avance por número de hojas, no una categoría vaga de "desarrollo vegetativo".
+
+**Se ve reflejado en el ciclo**: la tabla "Productores del ciclo" en
+`/ciclos/:id` ahora tiene una columna **Estado** — el estado fenológico de
+la última visita si existe, o el tipo de última visita (ej. "Prep. de
+tierra") si todavía no se ha registrado un estado específico. Así el
+gerente ve de un vistazo en qué etapa está cada productor sin tener que
+entrar a cada ficha.
+
 ## Manejo de errores más claro + borrar lotes
 
 Dos mejoras que salieron de un error real en campo: al agregar un lote con

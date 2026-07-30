@@ -3,7 +3,7 @@ import {
   IsString, Max, Min, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { EstadoFenologico, TipoIncidencia } from '@prisma/client';
+import { EstadoFenologico, TipoIncidencia, TipoVisita } from '@prisma/client';
 
 export class IncidenciaDto {
   @IsEnum(TipoIncidencia) tipo: TipoIncidencia;
@@ -17,16 +17,25 @@ export class IncidenciaDto {
 export class CrearInspeccionDto {
   @IsDateString() fecha: string;
   @IsOptional() @IsString() loteId?: string; // si se omite, la visita es a nivel de participación
+  @IsEnum(TipoVisita) tipoVisita: TipoVisita;
 
-  // Área realmente establecida y en pie
+  // --- Solo aplica si tipoVisita = PREPARACION_TIERRA ---
+  @IsOptional() @IsBoolean() prepArado?: boolean;
+  @IsOptional() @IsBoolean() prepRastra?: boolean;
+  @IsOptional() @IsBoolean() prepNivelacion?: boolean;
+  @IsOptional() @IsBoolean() prepHumedadAdecuada?: boolean;
+
+  // --- Solo aplica si tipoVisita = SIEMBRA ---
+  @IsOptional() @IsString() metodoSiembra?: string;
+  @IsOptional() @IsNumber() @Min(0) @Max(50) profundidadSiembraCm?: number;
+
+  // --- SEGUIMIENTO / COSECHA ---
   @IsOptional() @IsNumber() @Min(0) areaEfectivaHa?: number;
-
-  // Conteo de plantas en un metro lineal — el sistema extrapola al lote
-  @IsOptional() @IsNumber() @Min(0) plantasPorMetroLineal?: number;
-
+  @IsOptional() @IsNumber() @Min(0) @Max(200) plantasPorMetroLineal?: number;
   @IsOptional() @IsEnum(EstadoFenologico) estadoFenologico?: EstadoFenologico;
   @IsOptional() @IsBoolean() usoAdecuadoInsumos?: boolean;
   @IsOptional() @IsNumber() @Min(0) rendimientoProyectadoQqHa?: number;
+
   @IsOptional() @IsString() observaciones?: string;
 
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => IncidenciaDto)

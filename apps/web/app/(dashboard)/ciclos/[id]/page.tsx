@@ -2,7 +2,26 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { apiFetch } from '../../../../lib/api';
+
+const ETIQUETA_ESTADO_CULTIVO: Record<string, string> = {
+  PREPARACION_TIERRA: 'Prep. de tierra',
+  SIEMBRA: 'Sembrado',
+  EMERGENCIA: 'Emergencia',
+  V1: 'V1', V2: 'V2', V3: 'V3', V4: 'V4', V5: 'V5', V6_O_MAS: 'V6+',
+  FLORACION: 'Floración',
+  LLENADO_GRANO: 'Llenado de grano',
+  MADURACION: 'Maduración',
+  COSECHA: 'Cosecha',
+};
+
+const ETIQUETA_TIPO_VISITA: Record<string, string> = {
+  PREPARACION_TIERRA: 'Prep. de tierra',
+  SIEMBRA: 'Siembra',
+  SEGUIMIENTO: 'Seguimiento',
+  COSECHA: 'Cosecha',
+};
 
 export default function CicloDetallePage() {
   const params = useParams();
@@ -119,6 +138,7 @@ export default function CicloDetallePage() {
           <thead className="bg-cad-superficie text-left text-cad-apagado">
             <tr>
               <th className="p-3 font-medium">Productor</th>
+              <th className="p-3 font-medium">Estado</th>
               <th className="p-3 font-medium">Lotes</th>
               <th className="p-3 font-medium">Ha sembradas</th>
               <th className="p-3 font-medium">Ha efectivas</th>
@@ -130,7 +150,24 @@ export default function CicloDetallePage() {
           <tbody>
             {resumen.detalleProductores.map((p: any) => (
               <tr key={p.cicloProductorId} className="border-t border-cad-linea">
-                <td className="p-3">{p.productor}</td>
+                <td className="p-3">
+                  <Link href={`/ciclos/participaciones/${p.cicloProductorId}`} className="font-medium text-cad-navy hover:text-cad-naranja hover:underline">
+                    {p.productor}
+                  </Link>
+                </td>
+                <td className="p-3">
+                  {p.estadoFenologico ? (
+                    <span className="px-2 py-0.5 rounded-full bg-cad-verde/15 text-cad-verde text-xs">
+                      {ETIQUETA_ESTADO_CULTIVO[p.estadoFenologico] ?? p.estadoFenologico}
+                    </span>
+                  ) : p.tipoUltimaVisita ? (
+                    <span className="px-2 py-0.5 rounded-full bg-cad-info/10 text-cad-info text-xs">
+                      {ETIQUETA_TIPO_VISITA[p.tipoUltimaVisita] ?? p.tipoUltimaVisita}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-cad-apagado">sin visita</span>
+                  )}
+                </td>
                 <td className="p-3">{p.cantidadLotes}</td>
                 <td className="p-3">{p.haSembradas.toFixed(2)}</td>
                 <td className={`p-3 ${p.haEfectivas < p.haSembradas ? 'text-cad-danger' : ''}`}>{p.haEfectivas.toFixed(2)}</td>
