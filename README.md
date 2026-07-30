@@ -211,6 +211,25 @@ completa — funciona bien porque el feed de Google News es consistente, pero
 si Google cambia el formato del feed en el futuro, este parser es el primer
 lugar a revisar (`google-news-rss.util.ts`).
 
+## Alertas de lluvia por parcela (mm reales)
+
+La capa de radar del mapa (RainViewer) es solo visual — para milímetros
+numéricos se usa Open-Meteo (misma API gratuita del clima), consultada por
+las coordenadas exactas de cada parcela:
+
+- `GET /api/parcelas/alertas-lluvia` — en vivo, para el widget del Dashboard
+  y de Mapa de Parcelas. Solo muestra parcelas con lluvia hoy (no una caja
+  vacía si no ha llovido).
+- **Se guarda solo, todos los días**: `ParcelsService.onModuleInit` corre
+  una ingesta automática al arrancar y cada 3 horas, que persiste el
+  acumulado del día por parcela en `RegistroLluvia` — así queda un
+  histórico real con el que más adelante se puede cruzar lluvia vs.
+  rendimiento por lote.
+- **El técnico puede corregir el dato**: si tiene pluviómetro real en el
+  lote, `POST /api/parcelas/:id/lluvia` guarda `mmMedido`, que manda sobre
+  el `mmEstimado` automático para ese día.
+- `GET /api/parcelas/:id/historial-lluvia` — la serie completa de un lote.
+
 ## Commodities agrícolas en el Dashboard
 
 `/dashboard` muestra precio internacional de referencia (futuros CME/CBOT,

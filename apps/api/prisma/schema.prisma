@@ -43,6 +43,7 @@ model Usuario {
   solicitudesAprobadas     SolicitudFinanciamiento[] @relation("AprobadoPor")
   despachosRealizados      Despacho[]                @relation("DespachoResponsable")
   inspeccionesRealizadas   InspeccionCampo[]         @relation("InspeccionTecnico")
+  registrosLluvia          RegistroLluvia[]          @relation("RegistroLluviaPor")
   movimientosRegistrados   MovimientoCuenta[]        @relation("MovimientoRegistradoPor")
   logsAuditoria            LogAuditoria[]
 
@@ -131,8 +132,32 @@ model Parcela {
   updatedAt DateTime @updatedAt
 
   lotesSiembra LoteSiembra[]
+  registrosLluvia RegistroLluvia[]
 
   @@map("parcelas")
+}
+
+// Histórico de lluvia por parcela — un registro por día. `mmEstimado` viene
+// automático de Open-Meteo (corre solo, ver news-feed-style cron en el
+// servicio); `mmMedido` es lo que el técnico digita si tiene pluviómetro
+// real en el lote — cuando existe, es la cifra que manda para análisis.
+model RegistroLluvia {
+  id          String   @id @default(uuid())
+  parcelaId   String
+  parcela     Parcela  @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+
+  fecha       DateTime // día calendario del registro (medianoche UTC de ese día)
+  mmEstimado  Decimal? @db.Decimal(6, 2) // automático, vía Open-Meteo
+  mmMedido    Decimal? @db.Decimal(6, 2) // digitado por el técnico, si tiene pluviómetro
+
+  registradoPorId String?
+  registradoPor   Usuario? @relation("RegistroLluviaPor", fields: [registradoPorId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([parcelaId, fecha]) // un solo registro por parcela por día — se actualiza, no se duplica
+  @@map("registros_lluvia")
 }
 
 // ============================================================================

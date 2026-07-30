@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import ImportarKml from '../../../components/map/ImportarKml';
+import AlertasLluvia from '../../../components/map/AlertasLluvia';
 
 // Leaflet requiere `window`, por lo que el mapa se carga solo en cliente.
 const MapaParcelas = dynamic(() => import('../../../components/map/MapaParcelas'), { ssr: false });
@@ -18,6 +19,11 @@ export default function MapaPage() {
         </div>
         <ImportarKml />
       </div>
+
+      <div className="mb-4">
+        <AlertasLluvia />
+      </div>
+
       <MapaParcelas />
     </div>
   );

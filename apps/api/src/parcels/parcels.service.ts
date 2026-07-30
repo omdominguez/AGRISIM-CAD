@@ -1,10 +1,22 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { parseKmlOrKmz, calcularCentroide, calcularAreaHectareas } from './kml-import.util';
 
 @Injectable()
-export class ParcelsService {
+export class ParcelsService implements OnModuleInit {
+  private readonly logger = new Logger(ParcelsService.name);
+
   constructor(private prisma: PrismaService) {}
+
+  onModuleInit() {
+    // Corre al arrancar y luego cada 3 horas — suficiente para capturar el
+    // acumulado del día sin golpear la API externa a cada rato. No bloquea
+    // el arranque del servidor si falla.
+    this.registrarLluviaAutomatica().catch((e) => this.logger.warn(`Ingesta de lluvia inicial falló: ${e.message}`));
+    setInterval(() => {
+      this.registrarLluviaAutomatica().catch((e) => this.logger.warn(`Ingesta de lluvia falló: ${e.message}`));
+    }, 3 * 60 * 60 * 1000);
+  }
 
   listar(fincaId?: string) {
     return this.prisma.parcela.findMany({
@@ -209,6 +221,136 @@ export class ParcelsService {
         centroideLng: centroide?.lng,
         cargadaPorId: usuarioId,
       },
+    });
+  }
+
+  // ==========================================================================
+  // LLUVIA POR PARCELA — mm reales, no solo la imagen del radar.
+  // Open-Meteo (gratis, sin key) da precipitación numérica por coordenada;
+  // se consulta TODAS las parcelas en una sola llamada (coordenadas separadas
+  // por coma) para no hacer una petición por lote.
+  // ==========================================================================
+
+  private async consultarLluviaOpenMeteo(parcelas: { id: string; lat: number; lng: number }[]) {
+    if (parcelas.length === 0) return new Map<string, { mmUltimaHora: number; mmAcumuladoHoy: number }>();
+
+    const lats = parcelas.map((p) => p.lat).join(',');
+    const lngs = parcelas.map((p) => p.lng).join(',');
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=precipitation&hourly=precipitation&timezone=America%2FCaracas&forecast_days=1`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Open-Meteo respondió ${res.status}`);
+    const json = await res.json();
+    // Con una sola coordenada, Open-Meteo devuelve un objeto; con varias, un arreglo.
+    const resultados: any[] = Array.isArray(json) ? json : [json];
+
+    const mapa = new Map<string, { mmUltimaHora: number; mmAcumuladoHoy: number }>();
+    resultados.forEach((r, i) => {
+      const parcela = parcelas[i];
+      const mmUltimaHora = Number(r?.current?.precipitation ?? 0);
+
+      // Acumulado del día: suma las horas de hoy hasta la hora actual.
+      const horas: string[] = r?.hourly?.time ?? [];
+      const valores: number[] = r?.hourly?.precipitation ?? [];
+      const horaActual = r?.current?.time ?? new Date().toISOString();
+      const mmAcumuladoHoy = horas.reduce((acc, hora, idx) => {
+        if (hora.slice(0, 10) === horaActual.slice(0, 10) && hora <= horaActual) {
+          return acc + (valores[idx] ?? 0);
+        }
+        return acc;
+      }, 0);
+
+      mapa.set(parcela.id, { mmUltimaHora, mmAcumuladoHoy: Number(mmAcumuladoHoy.toFixed(1)) });
+    });
+
+    return mapa;
+  }
+
+  /** Alertas en vivo — para el widget del dashboard y del mapa. No persiste nada. */
+  async alertasLluvia() {
+    const parcelas = await this.prisma.parcela.findMany({
+      where: { centroideLat: { not: null }, centroideLng: { not: null } },
+      include: { finca: { include: { productor: { select: { nombre: true } } } } },
+    });
+
+    const coords = parcelas.map((p) => ({
+      id: p.id, lat: Number(p.centroideLat), lng: Number(p.centroideLng),
+    }));
+
+    const lluvia = await this.consultarLluviaOpenMeteo(coords);
+
+    const conAlerta = parcelas
+      .map((p) => {
+        const datos = lluvia.get(p.id);
+        return {
+          parcelaId: p.id,
+          nombreLote: p.nombreLote,
+          finca: p.finca.nombre,
+          productor: p.finca.productor.nombre,
+          mmUltimaHora: datos?.mmUltimaHora ?? 0,
+          mmAcumuladoHoy: datos?.mmAcumuladoHoy ?? 0,
+          lloviendoAhora: (datos?.mmUltimaHora ?? 0) > 0,
+        };
+      })
+      .filter((p) => p.lloviendoAhora || p.mmAcumuladoHoy > 0)
+      .sort((a, b) => b.mmAcumuladoHoy - a.mmAcumuladoHoy);
+
+    return { totalConLluvia: conAlerta.length, parcelas: conAlerta };
+  }
+
+  /**
+   * Corre sola (al arrancar y cada 3h): guarda el acumulado del día por
+   * parcela en RegistroLluvia. Así queda un histórico real, no solo la
+   * foto del momento — con esto se puede comparar lluvia vs. rendimiento
+   * más adelante.
+   */
+  async registrarLluviaAutomatica() {
+    const parcelas = await this.prisma.parcela.findMany({
+      where: { centroideLat: { not: null }, centroideLng: { not: null } },
+      select: { id: true, centroideLat: true, centroideLng: true },
+    });
+
+    const coords = parcelas.map((p) => ({ id: p.id, lat: Number(p.centroideLat), lng: Number(p.centroideLng) }));
+    const lluvia = await this.consultarLluviaOpenMeteo(coords);
+
+    const hoy = new Date();
+    hoy.setUTCHours(0, 0, 0, 0);
+
+    let actualizados = 0;
+    for (const [parcelaId, datos] of lluvia.entries()) {
+      await this.prisma.registroLluvia.upsert({
+        where: { parcelaId_fecha: { parcelaId, fecha: hoy } },
+        update: { mmEstimado: datos.mmAcumuladoHoy },
+        create: { parcelaId, fecha: hoy, mmEstimado: datos.mmAcumuladoHoy },
+      });
+      actualizados++;
+    }
+
+    this.logger.log(`Registro de lluvia automático: ${actualizados} parcelas actualizadas.`);
+    return { actualizados };
+  }
+
+  /** El técnico digita lo que midió en su pluviómetro — manda sobre el estimado. */
+  async registrarLluviaManual(parcelaId: string, fecha: string, mmMedido: number, usuarioId: string) {
+    const parcela = await this.prisma.parcela.findUnique({ where: { id: parcelaId } });
+    if (!parcela) throw new NotFoundException('Parcela no encontrada.');
+
+    const fechaDia = new Date(fecha);
+    fechaDia.setUTCHours(0, 0, 0, 0);
+
+    return this.prisma.registroLluvia.upsert({
+      where: { parcelaId_fecha: { parcelaId, fecha: fechaDia } },
+      update: { mmMedido, registradoPorId: usuarioId },
+      create: { parcelaId, fecha: fechaDia, mmMedido, registradoPorId: usuarioId },
+    });
+  }
+
+  /** Histórico de lluvia de una parcela — para ver la tendencia en el tiempo. */
+  historialLluvia(parcelaId: string) {
+    return this.prisma.registroLluvia.findMany({
+      where: { parcelaId },
+      orderBy: { fecha: 'desc' },
+      take: 60,
     });
   }
 }

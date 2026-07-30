@@ -7,7 +7,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolUsuario } from '@prisma/client';
 import { ParcelsService } from './parcels.service';
-import { CrearParcelaManualDto } from './dto';
+import { CrearParcelaManualDto, RegistrarLluviaDto } from './dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('parcelas')
@@ -22,6 +22,27 @@ export class ParcelsController {
   @Get('mapa')
   listarParaMapa() {
     return this.service.listarParaMapa();
+  }
+
+  @Get('alertas-lluvia')
+  alertasLluvia() {
+    return this.service.alertasLluvia();
+  }
+
+  @Get(':id/historial-lluvia')
+  historialLluvia(@Param('id') id: string) {
+    return this.service.historialLluvia(id);
+  }
+
+  // El técnico registra lo que midió en su pluviómetro (manda sobre el estimado automático).
+  @Post(':id/lluvia')
+  @Roles(RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE, RolUsuario.TECNICO_CAMPO)
+  registrarLluviaManual(
+    @Param('id') id: string,
+    @Body() body: RegistrarLluviaDto,
+    @Req() req: any,
+  ) {
+    return this.service.registrarLluviaManual(id, body.fecha, body.mmMedido, req.user.userId);
   }
 
   // Lote dibujado a mano en el mapa (alternativa a importar KML).

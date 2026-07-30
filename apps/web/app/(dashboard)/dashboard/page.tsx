@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api';
 import { obtenerUsuario } from '../../../lib/auth';
+import AlertasLluvia from '../../../components/map/AlertasLluvia';
 
 const COLOR_ESTADO_CICLO: Record<string, string> = {
   PLANIFICACION: 'bg-cad-ambar/20 text-cad-ambar',
@@ -57,6 +58,11 @@ export default function DashboardPage() {
           valor={cartera ? `$${cartera.porPagar.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'}
           destacado
         />
+      </div>
+
+      {/* Alertas de lluvia */}
+      <div className="mb-6">
+        <AlertasLluvia compacto />
       </div>
 
       {/* Precios de commodities agrícolas */}

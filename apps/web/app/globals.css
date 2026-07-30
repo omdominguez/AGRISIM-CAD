@@ -2,6 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Landing: entrada del logo y flotación suave, para que se sienta vivo
+   sin ser distractor — sutil, no un carrusel llamativo. */
+@keyframes logo-entrada {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes logo-flotar {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-logo-entrada {
+  animation: logo-entrada 0.9s ease-out forwards, logo-flotar 5s ease-in-out 0.9s infinite;
+}
+
+@keyframes fade-in-arriba {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-1 { animation: fade-in-arriba 0.8s ease-out 0.3s both; }
+.animate-fade-in-2 { animation: fade-in-arriba 0.8s ease-out 0.5s both; }
+.animate-fade-in-3 { animation: fade-in-arriba 0.8s ease-out 0.7s both; }
+
 /* Ticker de clima y noticias — desplazamiento horizontal continuo, lento
    a propósito para que dé tiempo de leer sin tener que perseguirlo. */
 @keyframes ticker-scroll {

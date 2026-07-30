@@ -66,6 +66,9 @@ function AutoEncuadre({ parcelas }: { parcelas: ParcelaMapa[] }) {
 export default function MapaParcelas() {
   const [parcelas, setParcelas] = useState<ParcelaMapa[]>([]);
   const [capa, setCapa] = useState<'mapa' | 'satelite'>('mapa');
+  const [mostrarLluvia, setMostrarLluvia] = useState(false);
+  const [urlRadar, setUrlRadar] = useState<string | null>(null);
+  const [horaRadar, setHoraRadar] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<Record<string, boolean>>({
     VERDE: true, AMARILLO: true, ROJO: true, SIN_CICLO: true,
@@ -75,6 +78,21 @@ export default function MapaParcelas() {
     apiFetch('/parcelas/mapa')
       .then(setParcelas)
       .catch((err) => setError(err.message ?? 'No se pudieron cargar las parcelas.'));
+  }, []);
+
+  // Radar de lluvia — RainViewer es una API pública sin key, gratis.
+  // Se pide directo desde el navegador (no hace falta pasar por el backend).
+  useEffect(() => {
+    fetch('https://api.rainviewer.com/public/weather-maps.json')
+      .then((r) => r.json())
+      .then((data) => {
+        const frames = data?.radar?.past;
+        if (!frames || frames.length === 0) return;
+        const ultimoFrame = frames[frames.length - 1]; // observación más reciente (no pronóstico)
+        setUrlRadar(`${data.host}${ultimoFrame.path}/256/{z}/{x}/{y}/2/1_1.png`);
+        setHoraRadar(new Date(ultimoFrame.time * 1000).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
+      })
+      .catch(() => {}); // si falla, simplemente no se ofrece la capa de lluvia — no rompe el resto del mapa
   }, []);
 
   const visibles = parcelas.filter((p) => filtros[p.semaforo]);
@@ -126,7 +144,25 @@ export default function MapaParcelas() {
           >
             Satélite
           </button>
+
+          <div className="w-px bg-cad-linea mx-1" />
+
+          <button
+            onClick={() => setMostrarLluvia((v) => !v)}
+            disabled={!urlRadar}
+            className={`text-sm font-medium rounded px-4 py-2 transition disabled:opacity-40 disabled:cursor-not-allowed ${
+              mostrarLluvia ? 'bg-cad-info text-white' : 'bg-white border border-cad-linea text-cad-tinta hover:bg-cad-superficie'
+            }`}
+          >
+            🌧️ Lluvia {horaRadar && mostrarLluvia ? `· ${horaRadar}` : ''}
+          </button>
         </div>
+
+        {mostrarLluvia && urlRadar && (
+          <p className="text-xs text-cad-apagado mb-2">
+            Radar de precipitación casi en tiempo real (RainViewer, se actualiza cada ~10 min). No es pronóstico, es lo que está lloviendo ahora.
+          </p>
+        )}
 
         <MapContainer center={CENTRO_DEFECTO} zoom={9} style={{ height: '600px', width: '100%' }} className="rounded-xl border border-cad-linea">
           {capa === 'mapa' ? (
@@ -138,6 +174,14 @@ export default function MapaParcelas() {
             <TileLayer
               attribution='Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            />
+          )}
+          {mostrarLluvia && urlRadar && (
+            <TileLayer
+              attribution='Radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener noreferrer">RainViewer</a>'
+              url={urlRadar}
+              opacity={0.55}
+              maxNativeZoom={7}
             />
           )}
           <AutoEncuadre parcelas={visibles} />
