@@ -353,4 +353,63 @@ export class ParcelsService implements OnModuleInit {
       take: 60,
     });
   }
+
+  /**
+   * Corrige el polígono de una parcela ya creada — mismo cálculo de área
+   * que al crearla, así que da igual si el lote nació por KML, dibujo, o
+   * ahora se está ajustando: el área siempre sale de la geometría real.
+   */
+  async actualizarGeometria(parcelaId: string, nombreLote?: string, coordenadas?: [number, number][]) {
+    const parcela = await this.prisma.parcela.findUnique({ where: { id: parcelaId } });
+    if (!parcela) throw new NotFoundException('Parcela no encontrada.');
+
+    const data: any = {};
+    if (nombreLote) data.nombreLote = nombreLote;
+
+    if (coordenadas) {
+      if (coordenadas.length < 3) {
+        throw new BadRequestException('Un lote necesita al menos 3 puntos para formar un polígono.');
+      }
+      const anillo = [...coordenadas];
+      const [lngIni, latIni] = anillo[0];
+      const [lngFin, latFin] = anillo[anillo.length - 1];
+      if (lngIni !== lngFin || latIni !== latFin) anillo.push(anillo[0]);
+
+      const geometry = { type: 'Polygon', coordinates: [anillo] };
+      const areaHa = calcularAreaHectareas(geometry as any);
+      if (areaHa <= 0.0001) {
+        throw new BadRequestException('El polígono trazado no forma un área válida — revisa los puntos.');
+      }
+      const centroide = calcularCentroide(geometry as any);
+
+      data.geoJson = geometry;
+      data.areaCalculadaHa = Number(areaHa.toFixed(4));
+      data.centroideLat = centroide?.lat;
+      data.centroideLng = centroide?.lng;
+    }
+
+    return this.prisma.parcela.update({ where: { id: parcelaId }, data });
+  }
+
+  /**
+   * Borra un lote. Si ya está usado en un ciclo (tiene un LoteSiembra
+   * asociado), se bloquea con un mensaje claro en vez de dejar que la base
+   * de datos lo rechace con un error críptico de llave foránea.
+   */
+  async eliminar(parcelaId: string) {
+    const parcela = await this.prisma.parcela.findUnique({
+      where: { id: parcelaId },
+      include: { lotesSiembra: true },
+    });
+    if (!parcela) throw new NotFoundException('Parcela no encontrada.');
+
+    if (parcela.lotesSiembra.length > 0) {
+      throw new BadRequestException(
+        'Este lote ya está siendo usado en uno o más ciclos de siembra — no se puede borrar mientras esté en uso.',
+      );
+    }
+
+    await this.prisma.parcela.delete({ where: { id: parcelaId } });
+    return { eliminado: true };
+  }
 }

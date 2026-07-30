@@ -1,5 +1,5 @@
 import {
-  IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min,
+  IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min,
 } from 'class-validator';
 import { TipoCiclo, EstadoCiclo } from '@prisma/client';
 
@@ -37,6 +37,14 @@ export class InscribirProductorDto {
 export class AgregarLoteDto {
   @IsString() parcelaId: string;
   @IsOptional() @IsDateString() fechaSiembra?: string;
-  @IsOptional() @IsNumber() @Min(0.01) distanciaSurcosM?: number;
-  @IsOptional() @IsNumber() @Min(0.01) densidadObjetivoPlantasPorM?: number;
+
+  @IsOptional() @IsNumber()
+  @Min(0.01, { message: 'La distancia entre surcos debe ser mayor a 0.' })
+  @Max(5, { message: 'La distancia entre surcos parece muy alta (máximo 5 m) — revisa si escribiste centímetros por error.' })
+  distanciaSurcosM?: number;
+
+  @IsOptional() @IsNumber()
+  @Min(0.01, { message: 'La densidad objetivo debe ser mayor a 0.' })
+  @Max(200, { message: 'La densidad objetivo parece muy alta (máximo 200 plantas/m) — revisa si escribiste plantas por hectárea en vez de por metro lineal.' })
+  densidadObjetivoPlantasPorM?: number;
 }

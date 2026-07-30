@@ -211,6 +211,42 @@ completa — funciona bien porque el feed de Google News es consistente, pero
 si Google cambia el formato del feed en el futuro, este parser es el primer
 lugar a revisar (`google-news-rss.util.ts`).
 
+## Ficha del productor: sección de Lotes rediseñada
+
+La ficha de cada productor (`/productores/:id`) ahora tiene una sola sección
+de **Lotes** que reemplaza lo que antes eran dos secciones separadas
+("Fincas" solo mostraba conteo, "Desempeño por lote" era una lista aparte):
+
+- Cada lote es una tarjeta con una **miniatura del polígono** (SVG generado
+  del GeoJSON, sin cargar un mapa completo — `MiniPoligono.tsx`).
+- **"Editar polígono"** abre el mismo editor de dibujo (Leaflet.Draw), pero
+  precargado con la forma actual — se arrastra el vértice que esté mal y se
+  guarda. `PATCH /api/parcelas/:id` recalcula área y centroide igual que al
+  crearlo, así que un lote corregido queda tan preciso como uno nuevo.
+- Si el lote ya tiene una siembra asociada, la tarjeta se expande para
+  mostrar cultivo, ciclo, rendimiento e insumos usados — cruzando la data de
+  `desempeno-lotes` por `parcelaId`. Si todavía no se ha sembrado, dice
+  "Sin siembra registrada todavía" en vez de forzar un dato que no existe.
+
+## Manejo de errores más claro + borrar lotes
+
+Dos mejoras que salieron de un error real en campo: al agregar un lote con
+una densidad de plantas fuera de rango, la base de datos lo rechazaba y el
+usuario solo veía "Internal server error" sin poder saber por qué.
+
+- **Validación con mensaje claro**: `AgregarLoteDto` ahora valida rangos
+  agronómicos razonables (distancia entre surcos hasta 5 m, densidad hasta
+  200 plantas/m) y explica el problema en español si el número no cuadra.
+- **Filtro global de errores de Prisma** (`PrismaExceptionFilter`): cualquier
+  error de base de datos que antes llegaba como un 500 opaco — un valor
+  fuera de rango, un duplicado, un registro que todavía está en uso —
+  ahora responde con un mensaje entendible, sin tener que adivinar la causa
+  revisando logs.
+- **Borrar un lote** — `DELETE /api/parcelas/:id`, con botón "Borrar" en
+  cada tarjeta de la sección Lotes. Si el lote ya está usado en un ciclo
+  de siembra, se bloquea con un mensaje explicando por qué, en vez de un
+  error de llave foránea sin explicación.
+
 ## Alertas de lluvia por parcela (mm reales)
 
 La capa de radar del mapa (RainViewer) es solo visual — para milímetros

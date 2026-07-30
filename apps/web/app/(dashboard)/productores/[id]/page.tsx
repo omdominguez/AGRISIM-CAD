@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import Cookies from 'js-cookie';
 import { apiFetch } from '../../../../lib/api';
 import { ESTADOS_VENEZUELA, MUNICIPIOS_POR_ESTADO, EstadoVenezuela } from '../../../../lib/venezuela-geo';
+import MiniPoligono from '../../../../components/map/MiniPoligono';
 
 // Leaflet necesita `window` — se carga solo en cliente.
 const DibujarLote = dynamic(() => import('../../../../components/map/DibujarLote'), { ssr: false });
@@ -30,6 +31,7 @@ export default function ProductorDetallePage() {
   const [loteAbierto, setLoteAbierto] = useState<string | null>(null);
   const [mostrarNuevaFinca, setMostrarNuevaFinca] = useState(false);
   const [fincaParaLote, setFincaParaLote] = useState<string | null>(null);
+  const [loteParaEditar, setLoteParaEditar] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function recargar() {
@@ -38,10 +40,24 @@ export default function ProductorDetallePage() {
     apiFetch(`/cuentas/productores/${productorId}`).then(setCuenta).catch(() => {});
   }
 
+  async function borrarLote(parcelaId: string, nombreLote: string) {
+    if (!confirm(`¿Borrar el lote "${nombreLote}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await apiFetch(`/parcelas/${parcelaId}`, { method: 'DELETE' });
+      recargar();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
+
   useEffect(() => { recargar(); }, [productorId]);
 
   if (error) return <p className="text-sm text-cad-danger">{error}</p>;
   if (!productor) return <p className="text-sm text-cad-apagado">Cargando...</p>;
+
+  const todosLosLotes = productor.fincas.flatMap((f: any) =>
+    f.lotes.map((l: any) => ({ ...l, fincaNombre: f.nombre })),
+  );
 
   return (
     <div>
@@ -73,12 +89,12 @@ export default function ProductorDetallePage() {
         </div>
       )}
 
-      <p className="font-semibold text-cad-navy mb-3">
-        Fincas
-        <button onClick={() => setMostrarNuevaFinca(true)} className="ml-3 text-xs text-cad-naranja hover:underline font-normal">
+      <div className="flex items-center justify-between mb-3">
+        <p className="font-semibold text-cad-navy">Fincas</p>
+        <button onClick={() => setMostrarNuevaFinca(true)} className="text-xs text-cad-naranja hover:underline font-medium">
           + Nueva finca
         </button>
-      </p>
+      </div>
       <div className="grid md:grid-cols-3 gap-3 mb-8">
         {productor.fincas.map((f: any) => (
           <div key={f.id} className="bg-white border border-cad-linea rounded-xl p-4">
@@ -86,7 +102,7 @@ export default function ProductorDetallePage() {
             {(f.municipio || f.estado) && (
               <p className="text-xs text-cad-apagado">{f.municipio ? `${f.municipio}, ${f.estado}` : f.estado}</p>
             )}
-            <p className="text-xs text-cad-apagado mt-1">{f.lotes.length} parcela(s) cargada(s)</p>
+            <p className="text-xs text-cad-apagado mt-1">{f.lotes.length} lote{f.lotes.length !== 1 ? 's' : ''} cargado{f.lotes.length !== 1 ? 's' : ''}</p>
             <button onClick={() => setFincaParaLote(f.id)} className="text-xs text-cad-naranja hover:underline mt-2">
               + Agregar lote
             </button>
@@ -98,67 +114,102 @@ export default function ProductorDetallePage() {
       </div>
 
       <p className="font-semibold text-cad-navy mb-3">
-        Desempeño por lote {desempeno && <span className="text-cad-apagado font-normal text-sm">— ordenado de mejor a peor rendimiento</span>}
+        Lotes <span className="text-cad-apagado font-normal text-sm">— polígono, área y desempeño de cada uno</span>
       </p>
 
-      <div className="space-y-3">
-        {desempeno?.ranking.map((l: any, idx: number) => (
-          <div key={l.loteSiembraId} className="bg-white border border-cad-linea rounded-xl overflow-hidden">
-            <button
-              onClick={() => setLoteAbierto(loteAbierto === l.loteSiembraId ? null : l.loteSiembraId)}
-              className="w-full flex items-center justify-between p-4 text-left hover:bg-cad-superficie transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="w-6 h-6 rounded-full bg-cad-superficie text-xs flex items-center justify-center font-medium text-cad-apagado">
-                  {idx + 1}
-                </span>
-                <div>
-                  <p className="font-medium text-sm">{l.parcela} <span className="text-cad-apagado font-normal">· {l.ciclo}</span></p>
-                  <p className="text-xs text-cad-apagado">{l.cultivo} · {l.areaSembradaHa.toFixed(2)} ha</p>
+      <div className="grid md:grid-cols-2 gap-3">
+        {todosLosLotes.map((l: any) => {
+          const desempenoLote = desempeno?.ranking.find((d: any) => d.parcelaId === l.id) ?? null;
+          const abierto = loteAbierto === l.id;
+
+          return (
+            <div key={l.id} className="bg-white border border-cad-linea rounded-xl overflow-hidden">
+              <div className="p-4 flex gap-3">
+                <MiniPoligono geoJson={l.geoJson} tamano={64} />
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{l.nombreLote}</p>
+                      <p className="text-xs text-cad-apagado truncate">{l.fincaNombre} · {Number(l.areaCalculadaHa).toFixed(2)} ha</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <button
+                        onClick={() => setLoteParaEditar(l)}
+                        className="text-xs text-cad-naranja hover:underline"
+                      >
+                        Editar polígono
+                      </button>
+                      <button
+                        onClick={() => borrarLote(l.id, l.nombreLote)}
+                        className="text-xs text-cad-danger hover:underline"
+                      >
+                        Borrar
+                      </button>
+                    </div>
+                  </div>
+
+                  {desempenoLote ? (
+                    <button
+                      onClick={() => setLoteAbierto(abierto ? null : l.id)}
+                      className="w-full text-left mt-2 pt-2 border-t border-cad-linea"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-cad-apagado">{desempenoLote.cultivo} · {desempenoLote.ciclo}</p>
+                        {desempenoLote.rendimientoRealQqHa != null ? (
+                          <p className="text-sm font-semibold text-cad-verde">{desempenoLote.rendimientoRealQqHa.toFixed(1)} qq/ha</p>
+                        ) : desempenoLote.rendimientoProyectadoQqHa != null ? (
+                          <p className="text-sm font-semibold text-cad-ambar">{desempenoLote.rendimientoProyectadoQqHa.toFixed(1)} qq/ha (proy.)</p>
+                        ) : (
+                          <p className="text-xs text-cad-apagado">sin dato aún</p>
+                        )}
+                      </div>
+                    </button>
+                  ) : (
+                    <p className="text-xs text-cad-apagado mt-2 pt-2 border-t border-cad-linea">Sin siembra registrada todavía</p>
+                  )}
                 </div>
               </div>
-              <div className="text-right">
-                {l.rendimientoRealQqHa != null ? (
-                  <p className="font-semibold text-cad-verde">{l.rendimientoRealQqHa.toFixed(1)} qq/ha</p>
-                ) : l.rendimientoProyectadoQqHa != null ? (
-                  <p className="font-semibold text-cad-ambar">{l.rendimientoProyectadoQqHa.toFixed(1)} qq/ha (proy.)</p>
-                ) : (
-                  <p className="text-xs text-cad-apagado">sin dato</p>
-                )}
-                {l.costoInsumosHa != null && <p className="text-xs text-cad-apagado">${l.costoInsumosHa.toFixed(0)}/ha en insumos</p>}
-              </div>
-            </button>
 
-            {loteAbierto === l.loteSiembraId && (
-              <div className="border-t border-cad-linea p-4 bg-cad-superficie">
-                <p className="text-xs font-medium text-cad-apagado uppercase mb-2">Insumos usados en este ciclo</p>
-                {l.insumosUsados.length === 0 ? (
-                  <p className="text-xs text-cad-apagado">Sin paquete tecnológico registrado.</p>
-                ) : (
-                  <table className="w-full text-xs">
-                    <thead className="text-left text-cad-apagado">
-                      <tr><th className="pb-1">Insumo</th><th className="pb-1">Categoría</th><th className="pb-1">Cantidad</th><th className="pb-1">Costo</th></tr>
-                    </thead>
-                    <tbody>
-                      {l.insumosUsados.map((i: any, ix: number) => (
-                        <tr key={ix} className="border-t border-cad-linea/60">
-                          <td className="py-1">{i.nombreInsumo}</td>
-                          <td className="py-1">{ETIQUETA_CATEGORIA[i.categoria] ?? i.categoria}</td>
-                          <td className="py-1">{i.cantidad} {i.unidad}</td>
-                          <td className="py-1">${(i.cantidad * i.costoUnitario).toFixed(0)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+              {abierto && desempenoLote && (
+                <div className="border-t border-cad-linea p-4 bg-cad-superficie">
+                  <p className="text-xs font-medium text-cad-apagado uppercase mb-2">Insumos usados en este ciclo</p>
+                  {desempenoLote.insumosUsados.length === 0 ? (
+                    <p className="text-xs text-cad-apagado">Sin paquete tecnológico registrado.</p>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead className="text-left text-cad-apagado">
+                        <tr><th className="pb-1">Insumo</th><th className="pb-1">Categoría</th><th className="pb-1">Cantidad</th><th className="pb-1">Costo</th></tr>
+                      </thead>
+                      <tbody>
+                        {desempenoLote.insumosUsados.map((i: any, ix: number) => (
+                          <tr key={ix} className="border-t border-cad-linea/60">
+                            <td className="py-1">{i.nombreInsumo}</td>
+                            <td className="py-1">{ETIQUETA_CATEGORIA[i.categoria] ?? i.categoria}</td>
+                            <td className="py-1">{i.cantidad} {i.unidad}</td>
+                            <td className="py-1">${(i.cantidad * i.costoUnitario).toFixed(0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {desempeno && desempeno.ranking.length === 0 && (
-        <p className="text-sm text-cad-apagado">Este productor todavía no tiene lotes de siembra registrados.</p>
+      {todosLosLotes.length === 0 && (
+        <p className="text-sm text-cad-apagado">Este productor todavía no tiene lotes cargados.</p>
+      )}
+
+      {loteParaEditar && (
+        <EditarPoligonoModal
+          lote={loteParaEditar}
+          onClose={() => setLoteParaEditar(null)}
+          onGuardado={() => { setLoteParaEditar(null); recargar(); }}
+        />
       )}
     </div>
   );
@@ -258,6 +309,51 @@ function AgregarLoteModal({ fincaId, onClose, onCreado }: { fincaId: string; onC
         )}
 
         {error && <p className="text-sm text-cad-danger mt-3">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+function EditarPoligonoModal({ lote, onClose, onGuardado }: { lote: any; onClose: () => void; onGuardado: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(false);
+
+  // El GeoJSON guarda [lng, lat]; DibujarLote trabaja en [lat, lng] (como Leaflet).
+  const poligonoInicial: [number, number][] | undefined = (() => {
+    const anillo = lote.geoJson?.type === 'Polygon' ? lote.geoJson.coordinates[0] : null;
+    if (!anillo) return undefined;
+    return anillo.map(([lng, lat]: [number, number]) => [lat, lng]);
+  })();
+
+  async function guardar(puntos: [number, number][]) {
+    setError(null);
+    setCargando(true);
+    try {
+      const coordenadas = puntos.map(([lat, lng]) => [lng, lat]);
+      await apiFetch(`/parcelas/${lote.id}`, { method: 'PATCH', body: JSON.stringify({ coordenadas }) });
+      onGuardado();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-cad-navy/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 w-full max-w-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="font-semibold text-cad-navy">Corregir polígono</p>
+            <p className="text-xs text-cad-apagado">{lote.nombreLote}</p>
+          </div>
+          <button onClick={onClose} className="text-cad-apagado hover:text-cad-tinta text-xl leading-none">×</button>
+        </div>
+
+        <DibujarLote poligonoInicial={poligonoInicial} onCompletar={guardar} />
+
+        {cargando && <p className="text-xs text-cad-apagado mt-2">Guardando...</p>}
+        {error && <p className="text-sm text-cad-danger mt-2">{error}</p>}
       </div>
     </div>
   );

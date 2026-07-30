@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, Req,
+  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -7,7 +7,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolUsuario } from '@prisma/client';
 import { ParcelsService } from './parcels.service';
-import { CrearParcelaManualDto, RegistrarLluviaDto } from './dto';
+import { CrearParcelaManualDto, RegistrarLluviaDto, ActualizarParcelaDto } from './dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('parcelas')
@@ -43,6 +43,20 @@ export class ParcelsController {
     @Req() req: any,
   ) {
     return this.service.registrarLluviaManual(id, body.fecha, body.mmMedido, req.user.userId);
+  }
+
+  // Corregir el polígono de un lote ya creado (arrastrar vértices y guardar).
+  @Patch(':id')
+  @Roles(RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE, RolUsuario.TECNICO_CAMPO)
+  actualizar(@Param('id') id: string, @Body() dto: ActualizarParcelaDto) {
+    return this.service.actualizarGeometria(id, dto.nombreLote, dto.coordenadas);
+  }
+
+  // Borrar un lote que ya no va a existir (solo si no está en uso en ningún ciclo).
+  @Delete(':id')
+  @Roles(RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE, RolUsuario.TECNICO_CAMPO)
+  eliminar(@Param('id') id: string) {
+    return this.service.eliminar(id);
   }
 
   // Lote dibujado a mano en el mapa (alternativa a importar KML).

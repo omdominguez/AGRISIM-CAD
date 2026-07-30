@@ -112,6 +112,7 @@ export class ProducersService {
 
       return {
         loteSiembraId: l.id,
+        parcelaId: l.parcela.id,
         parcela: l.parcela.nombreLote,
         ciclo: l.cicloProductor.ciclo.nombre,
         cicloId: l.cicloProductor.ciclo.id,

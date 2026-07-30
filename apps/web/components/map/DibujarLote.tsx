@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import { MapContainer, TileLayer, Polygon, Marker, useMapEvents } from 'react-leaflet';
+import { useEffect, useRef, useState } from 'react';
+import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet-draw/dist/leaflet.draw.css';
 import L from 'leaflet';
+import 'leaflet-draw'; // efecto secundario: agrega L.Control.Draw al objeto L
 
 // Radio medio terrestre (m) — misma fórmula geodésica que usa el backend
 // (exceso esférico), para que el área que se ve mientras se dibuja
@@ -22,90 +24,173 @@ function calcularAreaHectareas(puntos: [number, number][]): number {
   return Math.abs((total * RADIO_TIERRA_M * RADIO_TIERRA_M) / 2) / 10000;
 }
 
-const iconoPunto = L.divIcon({
-  className: '',
-  html: '<div style="width:10px;height:10px;border-radius:50%;background:#F77B1C;border:2px solid white;box-shadow:0 0 2px rgba(0,0,0,0.5);"></div>',
-  iconSize: [10, 10],
-  iconAnchor: [5, 5],
-});
-
-// Centro por defecto — región llanera. Ajustable si el usuario ya tiene
-// otras parcelas cargadas más cerca (se puede pasar `centro` como prop).
+// Centro por defecto — región llanera.
 const CENTRO_DEFECTO: [number, number] = [8.62, -70.2];
 
-function CapturaClicks({ onClick }: { onClick: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onClick(e.latlng.lat, e.latlng.lng);
-    },
-  });
+/**
+ * Agrega la barra de herramientas de Leaflet.Draw al mapa: dibujar polígono,
+ * editar vértices arrastrándolos, y borrar. Reemplaza el click-por-click
+ * manual de antes — es la misma interacción que usan Google My Maps o SIMA.
+ * Solo se permite UN polígono a la vez (un lote): al dibujar uno nuevo, se
+ * borra el anterior automáticamente.
+ */
+function HerramientasDibujo({
+  featureGroupRef,
+  onCambio,
+  poligonoInicial,
+}: {
+  featureGroupRef: React.RefObject<L.FeatureGroup>;
+  onCambio: () => void;
+  poligonoInicial?: [number, number][];
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    const grupo = featureGroupRef.current;
+    if (!grupo) return;
+
+    // Modo edición: si viene un polígono existente, se precarga ya
+    // editable (arrastrable) en vez de arrancar el mapa en blanco.
+    if (poligonoInicial && poligonoInicial.length >= 3 && grupo.getLayers().length === 0) {
+      const capaExistente = L.polygon(poligonoInicial, { color: '#F77B1C', weight: 3, fillOpacity: 0.2 });
+      grupo.addLayer(capaExistente);
+      map.fitBounds(capaExistente.getBounds(), { padding: [30, 30] });
+    }
+
+    const controlDibujo = new (L as any).Control.Draw({
+      position: 'topleft',
+      draw: {
+        polygon: {
+          allowIntersection: false,
+          showArea: true,
+          drawError: { color: '#B23A3A', message: '⚠ Las líneas del lote no pueden cruzarse entre sí.' },
+          shapeOptions: { color: '#F77B1C', weight: 3, fillOpacity: 0.2 },
+        },
+        polyline: false,
+        rectangle: false,
+        circle: false,
+        circlemarker: false,
+        marker: false,
+      },
+      edit: {
+        featureGroup: grupo,
+        remove: true,
+      },
+    });
+
+    map.addControl(controlDibujo);
+
+    function alCrear(e: any) {
+      // Un solo lote a la vez: el polígono nuevo reemplaza al anterior.
+      grupo?.clearLayers();
+      grupo?.addLayer(e.layer);
+      onCambio();
+    }
+
+    map.on((L as any).Draw.Event.CREATED, alCrear);
+    map.on((L as any).Draw.Event.EDITED, onCambio);
+    map.on((L as any).Draw.Event.DELETED, onCambio);
+
+    return () => {
+      map.off((L as any).Draw.Event.CREATED, alCrear);
+      map.off((L as any).Draw.Event.EDITED, onCambio);
+      map.off((L as any).Draw.Event.DELETED, onCambio);
+      map.removeControl(controlDibujo);
+    };
+  }, [map, featureGroupRef, onCambio, poligonoInicial]);
+
   return null;
 }
 
 export default function DibujarLote({
   onCompletar,
   centro = CENTRO_DEFECTO,
+  poligonoInicial,
 }: {
   onCompletar: (puntos: [number, number][], areaHa: number) => void;
   centro?: [number, number];
+  /** Si se pasa, el mapa arranca con este polígono ya trazado y editable —
+   *  modo "corregir lote existente" en vez de "dibujar uno nuevo". */
+  poligonoInicial?: [number, number][];
 }) {
-  const [puntos, setPuntos] = useState<[number, number][]>([]);
+  const [capa, setCapa] = useState<'satelite' | 'mapa'>('satelite');
+  const [areaHa, setAreaHa] = useState(poligonoInicial ? calcularAreaHectareas(poligonoInicial) : 0);
+  const featureGroupRef = useRef<L.FeatureGroup>(null);
+  const centroInicial = poligonoInicial?.[0] ?? centro;
 
-  const areaHa = calcularAreaHectareas(puntos);
-
-  function agregarPunto(lat: number, lng: number) {
-    setPuntos((p) => [...p, [lat, lng]]);
+  function obtenerPuntosActuales(): [number, number][] | null {
+    const grupo = featureGroupRef.current;
+    if (!grupo) return null;
+    const capas = grupo.getLayers();
+    if (capas.length === 0) return null;
+    const poligono = capas[0] as L.Polygon;
+    const anillo = poligono.getLatLngs()[0] as L.LatLng[];
+    return anillo.map((p) => [p.lat, p.lng]);
   }
 
-  function deshacer() {
-    setPuntos((p) => p.slice(0, -1));
-  }
-
-  function limpiar() {
-    setPuntos([]);
+  function recalcularArea() {
+    const puntos = obtenerPuntosActuales();
+    setAreaHa(puntos ? calcularAreaHectareas(puntos) : 0);
   }
 
   function finalizar() {
-    if (puntos.length < 3) {
-      alert('Marca al menos 3 puntos para formar el lote.');
+    const puntos = obtenerPuntosActuales();
+    if (!puntos || puntos.length < 3) {
+      alert('Dibuja el lote primero — usa el ícono de polígono a la izquierda del mapa.');
       return;
     }
-    onCompletar(puntos, areaHa);
+    onCompletar(puntos, calcularAreaHectareas(puntos));
   }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs text-cad-apagado">
-          Haz click en el mapa para marcar cada esquina del lote, en orden alrededor del perímetro.
+          {poligonoInicial
+            ? 'Arrastra los vértices para corregir el polígono, o usa la papelera y trázalo de nuevo con el ícono de polígono.'
+            : 'Usa el ícono de polígono (izquierda del mapa) para trazar el lote. Después puedes arrastrar cada punto para ajustarlo, o usar la papelera para borrar y empezar de nuevo.'}
         </p>
         <p className="text-sm font-medium text-cad-navy shrink-0 ml-3">
           {areaHa > 0 ? `${areaHa.toFixed(2)} ha` : '—'}
         </p>
       </div>
 
-      <MapContainer center={centro} zoom={15} style={{ height: '360px', width: '100%' }} className="rounded-lg border border-cad-linea">
-        <TileLayer
-          attribution='&copy; OpenStreetMap contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <CapturaClicks onClick={agregarPunto} />
-        {puntos.map((p, i) => <Marker key={i} position={p} icon={iconoPunto} />)}
-        {puntos.length >= 3 && <Polygon positions={puntos} pathOptions={{ color: '#F77B1C', fillOpacity: 0.15 }} />}
+      <div className="flex gap-2 mb-2">
+        <button type="button" onClick={() => setCapa('satelite')}
+          className={`text-xs font-medium rounded px-3 py-1.5 transition ${
+            capa === 'satelite' ? 'bg-cad-navy text-white' : 'border border-cad-linea text-cad-tinta hover:bg-cad-superficie'
+          }`}>
+          Satélite
+        </button>
+        <button type="button" onClick={() => setCapa('mapa')}
+          className={`text-xs font-medium rounded px-3 py-1.5 transition ${
+            capa === 'mapa' ? 'bg-cad-navy text-white' : 'border border-cad-linea text-cad-tinta hover:bg-cad-superficie'
+          }`}>
+          Mapa
+        </button>
+      </div>
+
+      <MapContainer center={centroInicial} zoom={15} style={{ height: '420px', width: '100%' }} className="rounded-lg border border-cad-linea">
+        {capa === 'satelite' ? (
+          <TileLayer
+            attribution='Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          />
+        ) : (
+          <TileLayer
+            attribution='&copy; OpenStreetMap contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+        )}
+        <FeatureGroup ref={featureGroupRef}>
+          <HerramientasDibujo featureGroupRef={featureGroupRef} onCambio={recalcularArea} poligonoInicial={poligonoInicial} />
+        </FeatureGroup>
       </MapContainer>
 
-      <div className="flex gap-2 mt-3">
-        <button type="button" onClick={deshacer} disabled={puntos.length === 0}
-          className="text-xs border border-cad-linea rounded px-3 py-1.5 hover:bg-cad-superficie disabled:opacity-40">
-          Deshacer último punto
-        </button>
-        <button type="button" onClick={limpiar} disabled={puntos.length === 0}
-          className="text-xs border border-cad-linea rounded px-3 py-1.5 hover:bg-cad-superficie disabled:opacity-40">
-          Limpiar
-        </button>
-        <button type="button" onClick={finalizar} disabled={puntos.length < 3}
-          className="text-xs bg-cad-naranja text-white font-medium rounded px-3 py-1.5 hover:brightness-95 disabled:opacity-40 ml-auto">
-          Usar este lote ({puntos.length} puntos)
+      <div className="flex justify-end mt-3">
+        <button type="button" onClick={finalizar} disabled={areaHa <= 0}
+          className="text-xs bg-cad-naranja text-white font-medium rounded px-3 py-1.5 hover:brightness-95 disabled:opacity-40">
+          {poligonoInicial ? 'Guardar corrección' : 'Usar este lote'} ({areaHa > 0 ? `${areaHa.toFixed(2)} ha` : 'sin trazar'})
         </button>
       </div>
     </div>
