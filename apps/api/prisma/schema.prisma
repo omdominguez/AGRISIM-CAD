@@ -47,6 +47,7 @@ model Usuario {
   comprasRegistradas       CompraInsumo[]            @relation("CompraRegistradaPor")
   retirosRegistrados       RetiroInsumo[]            @relation("RetiroRegistradoPor")
   ventasRegistradas        Venta[]                   @relation("VentaRegistradaPor")
+  ordenesCompraRegistradas OrdenCompra[]             @relation("OrdenCompraRegistradaPor")
   movimientosRegistrados   MovimientoCuenta[]        @relation("MovimientoRegistradoPor")
   logsAuditoria            LogAuditoria[]
 
@@ -494,8 +495,53 @@ model Insumo {
   @@map("insumos")
 }
 
-// Cada compra sube el stock y deja un registro histórico del precio pagado
-// ese día — así se puede ver cómo ha subido/bajado el costo en el tiempo.
+// Proveedores reales — antes "proveedor" en CompraInsumo era solo texto
+// libre. Ahora es una entidad con la que se arman las órdenes de compra,
+// al estilo de una ficha de proveedor de un ERP (Odoo, etc.).
+model Proveedor {
+  id       String  @id @default(uuid())
+  nombre   String
+  rif      String? @unique
+  telefono String?
+  contacto String?
+  notas    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordenesCompra OrdenCompra[]
+
+  @@map("proveedores")
+}
+
+// Cabecera de la orden de compra: UN proveedor, UNA fecha, y N líneas de
+// insumos (cada línea sigue siendo un registro CompraInsumo — reutiliza tal
+// cual la lógica ya existente de costo promedio ponderado y el bloqueo
+// SELECT...FOR UPDATE por insumo, solo que ahora varias líneas se crean
+// juntas bajo un mismo encabezado, como una orden de compra real).
+model OrdenCompra {
+  id     String @id @default(uuid())
+  numero String @unique
+
+  proveedorId String
+  proveedor   Proveedor @relation(fields: [proveedorId], references: [id])
+
+  fecha    DateTime
+  subtotal Decimal  @db.Decimal(14, 2) // suma de cantidad × costoUnitario de todas las líneas
+
+  registradoPorId String?
+  registradoPor   Usuario? @relation("OrdenCompraRegistradaPor", fields: [registradoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  lineas CompraInsumo[]
+
+  @@map("ordenes_compra")
+}
+
+// Cada línea de una orden de compra sigue viviendo aquí — sube el stock y
+// deja un registro histórico del precio pagado ese día — así se puede ver
+// cómo ha subido/bajado el costo en el tiempo.
 model CompraInsumo {
   id       String @id @default(uuid())
   insumoId String
@@ -504,8 +550,11 @@ model CompraInsumo {
   fecha         DateTime
   cantidad      Decimal  @db.Decimal(14, 2)
   costoUnitario Decimal  @db.Decimal(14, 4)
-  proveedor     String?
+  proveedor     String? // legado: compras registradas antes de existir Proveedor/OrdenCompra
   notas         String?
+
+  ordenCompraId String?
+  ordenCompra   OrdenCompra? @relation(fields: [ordenCompraId], references: [id])
 
   registradoPorId String?
   registradoPor   Usuario? @relation("CompraRegistradaPor", fields: [registradoPorId], references: [id])

@@ -440,12 +440,22 @@ function VentasSeccion({ solicitud, insumos, ventas, onCambio }: { solicitud: an
         <form onSubmit={facturar} className="space-y-2 mb-4">
           {lineas.map((linea, idx) => {
             const insumoSeleccionado = insumos.find((i) => i.id === linea.insumoId);
+            // Un mismo insumo no puede aparecer en dos líneas de la misma
+            // factura — antes eso hacía que el descuento de stock de una
+            // línea pisara al de la otra. Se oculta de las demás líneas en
+            // vez de dejar que el usuario lo repita.
+            const idsUsadosEnOtrasLineas = new Set(
+              lineas.filter((_, i) => i !== idx).map((l) => l.insumoId).filter(Boolean),
+            );
+            const opcionesDisponibles = insumos.filter(
+              (i) => i.id === linea.insumoId || !idsUsadosEnOtrasLineas.has(i.id),
+            );
             return (
               <div key={idx} className="flex gap-2">
                 <select value={linea.insumoId} onChange={(e) => actualizarLinea(idx, 'insumoId', e.target.value)}
                   className="flex-1 border border-cad-linea rounded px-3 py-2 text-sm">
                   <option value="">Selecciona un insumo...</option>
-                  {insumos.map((i) => (
+                  {opcionesDisponibles.map((i) => (
                     <option key={i.id} value={i.id}>{i.nombre} — stock: {Number(i.stockActual).toFixed(1)} {i.unidad}</option>
                   ))}
                 </select>

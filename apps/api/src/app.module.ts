@@ -9,6 +9,7 @@ import { CyclesModule } from './cycles/cycles.module';
 import { FieldModule } from './field/field.module';
 import { SolicitudesModule } from './solicitudes/solicitudes.module';
 import { InsumosModule } from './insumos/insumos.module';
+import { ComprasModule } from './compras/compras.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { FinancingSimulationsModule } from './financing-simulations/financing-simulations.module';
 import { NewsFeedModule } from './news-feed/news-feed.module';
@@ -25,6 +26,7 @@ import { NewsFeedModule } from './news-feed/news-feed.module';
     FieldModule,       // inspecciones, población de plantas, fitosanitario
     SolicitudesModule, // expediente de financiamiento (6 pasos)
     InsumosModule,     // inventario real: compras, stock, retiros
+    ComprasModule,     // proveedores + órdenes de compra (una por proveedor, N líneas)
     AccountsModule,    // estados de cuenta y proyección de efectivo
     FinancingSimulationsModule,
     NewsFeedModule,
