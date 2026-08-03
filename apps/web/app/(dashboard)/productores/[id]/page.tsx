@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Cookies from 'js-cookie';
 import { apiFetch } from '../../../../lib/api';
@@ -23,6 +23,7 @@ const ETIQUETA_CATEGORIA: Record<string, string> = {
 
 export default function ProductorDetallePage() {
   const params = useParams();
+  const router = useRouter();
   const productorId = params.id as string;
 
   const [productor, setProductor] = useState<any | null>(null);
@@ -30,6 +31,7 @@ export default function ProductorDetallePage() {
   const [cuenta, setCuenta] = useState<any | null>(null);
   const [loteAbierto, setLoteAbierto] = useState<string | null>(null);
   const [mostrarNuevaFinca, setMostrarNuevaFinca] = useState(false);
+  const [mostrarEditar, setMostrarEditar] = useState(false);
   const [fincaParaLote, setFincaParaLote] = useState<string | null>(null);
   const [loteParaEditar, setLoteParaEditar] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +52,16 @@ export default function ProductorDetallePage() {
     }
   }
 
+  async function borrarProductor() {
+    if (!confirm(`¿Borrar a "${productor.nombre}" del registro maestro? Esta acción no se puede deshacer.`)) return;
+    try {
+      await apiFetch(`/productores/${productorId}`, { method: 'DELETE' });
+      router.push('/productores');
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
+
   useEffect(() => { recargar(); }, [productorId]);
 
   if (error) return <p className="text-sm text-cad-danger">{error}</p>;
@@ -61,10 +73,28 @@ export default function ProductorDetallePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-cad-navy mb-1">{productor.nombre}</h1>
+      <div className="flex items-start justify-between mb-1">
+        <h1 className="text-2xl font-bold text-cad-navy">{productor.nombre}</h1>
+        <div className="flex gap-3">
+          <button onClick={() => setMostrarEditar(true)} className="text-xs text-cad-naranja hover:underline">
+            Editar
+          </button>
+          <button onClick={borrarProductor} className="text-xs text-cad-danger hover:underline">
+            Borrar productor
+          </button>
+        </div>
+      </div>
       <p className="text-sm text-cad-apagado mb-6">
         {productor.cedulaRif ?? 'Sin cédula/RIF'} · {productor.municipio ? `${productor.municipio}, ${productor.estado}` : (productor.estado ?? 'Sin zona')}
       </p>
+
+      {mostrarEditar && (
+        <EditarProductorModal
+          productor={productor}
+          onClose={() => setMostrarEditar(false)}
+          onGuardado={() => { setMostrarEditar(false); recargar(); }}
+        />
+      )}
 
       {mostrarNuevaFinca && (
         <NuevaFincaModal productorId={productorId} onClose={() => setMostrarNuevaFinca(false)}
@@ -365,6 +395,88 @@ function Stat({ label, valor, nota, destacado }: { label: string; valor: string;
       <p className={`text-xs ${destacado ? 'text-white/60' : 'text-cad-apagado'}`}>{label}</p>
       <p className="text-xl font-semibold mt-1">{valor}</p>
       {nota && <p className={`text-xs mt-1 ${destacado ? 'text-white/60' : 'text-cad-apagado'}`}>{nota}</p>}
+    </div>
+  );
+}
+
+function EditarProductorModal({ productor, onClose, onGuardado }: { productor: any; onClose: () => void; onGuardado: () => void }) {
+  const [form, setForm] = useState({
+    nombre: productor.nombre ?? '',
+    telefono: productor.telefono ?? '',
+    estado: productor.estado ?? '',
+    municipio: productor.municipio ?? '',
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(false);
+
+  const municipiosDisponibles = form.estado ? MUNICIPIOS_POR_ESTADO[form.estado as EstadoVenezuela] : [];
+
+  async function guardar(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setCargando(true);
+    try {
+      await apiFetch(`/productores/${productor.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          nombre: form.nombre,
+          telefono: form.telefono || undefined,
+          estado: form.estado || undefined,
+          municipio: form.municipio || undefined,
+        }),
+      });
+      onGuardado();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-cad-navy/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 w-full max-w-md">
+        <div className="flex items-center justify-between mb-4">
+          <p className="font-semibold text-cad-navy">Editar productor</p>
+          <button onClick={onClose} className="text-cad-apagado hover:text-cad-tinta text-xl leading-none">×</button>
+        </div>
+        <form onSubmit={guardar} className="space-y-4">
+          <div>
+            <label className="block text-xs text-cad-apagado mb-1">Nombre completo</label>
+            <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+              className="w-full border border-cad-linea rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-cad-apagado mb-1">Teléfono</label>
+            <input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+              className="w-full border border-cad-linea rounded px-3 py-2 text-sm" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-cad-apagado mb-1">Estado</label>
+              <select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value, municipio: '' })}
+                className="w-full border border-cad-linea rounded px-3 py-2 text-sm">
+                <option value="">Selecciona...</option>
+                {ESTADOS_VENEZUELA.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-cad-apagado mb-1">Municipio</label>
+              <select value={form.municipio} onChange={(e) => setForm({ ...form, municipio: e.target.value })}
+                disabled={!form.estado}
+                className="w-full border border-cad-linea rounded px-3 py-2 text-sm disabled:bg-cad-superficie disabled:text-cad-apagado">
+                <option value="">{form.estado ? 'Selecciona...' : 'Elige un estado primero'}</option>
+                {municipiosDisponibles.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+          {error && <p className="text-sm text-cad-danger">{error}</p>}
+          <button type="submit" disabled={cargando}
+            className="w-full bg-cad-naranja text-white font-medium rounded py-2 text-sm hover:brightness-95 transition disabled:opacity-50">
+            {cargando ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

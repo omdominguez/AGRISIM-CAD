@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { CrearProductorDto, ActualizarProductorDto, CrearFincaDto } from './dto';
 
@@ -46,6 +46,30 @@ export class ProducersService {
   async actualizar(id: string, dto: ActualizarProductorDto) {
     await this.obtener(id);
     return this.prisma.productor.update({ where: { id }, data: dto });
+  }
+
+  /**
+   * Borrar un productor solo si no tiene participaciones en ningún ciclo —
+   * eso implicaría borrar financiamiento, visitas de campo, etc. Se bloquea
+   * con un mensaje claro en vez de dejar que la base lo rechace por llave
+   * foránea. Las fincas/parcelas sin ciclo asociado sí se pueden borrar en
+   * cascada (nunca tuvieron actividad financiera real).
+   */
+  async eliminar(id: string) {
+    const productor = await this.prisma.productor.findUnique({
+      where: { id },
+      include: { participaciones: true },
+    });
+    if (!productor) throw new NotFoundException('Productor no encontrado.');
+
+    if (productor.participaciones.length > 0) {
+      throw new BadRequestException(
+        'Este productor ya participó en al menos un ciclo — no se puede borrar sin perder su historial de financiamiento y visitas. Si fue un error, márcalo como inactivo en vez de borrarlo.',
+      );
+    }
+
+    await this.prisma.productor.delete({ where: { id } });
+    return { eliminado: true };
   }
 
   async crearFinca(productorId: string, dto: CrearFincaDto) {

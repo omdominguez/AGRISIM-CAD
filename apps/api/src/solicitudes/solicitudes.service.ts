@@ -223,10 +223,12 @@ export class SolicitudesService {
       throw new BadRequestException('Este expediente ya fue liquidado.');
     }
 
-    const costoInsumosBase = solicitud.itemsPaquete.reduce(
-      (acc, item) => acc + Number(item.cantidad) * Number(item.costoUnitario), 0,
-    );
-    const montoInsumosConMargen = costoInsumosBase * (1 + Number(solicitud.margenInsumosPct));
+    // Se cobra lo que REALMENTE se retiró del inventario, no lo planificado
+    // en el paquete — el productor puede haber usado menos (o distinto) de
+    // lo presupuestado, y la liquidación debe reflejar la realidad, no el plan.
+    const retiros = await this.prisma.retiroInsumo.findMany({ where: { solicitudId: id } });
+    const costoInsumosBase = retiros.reduce((acc, r) => acc + Number(r.costoTotal), 0);
+    const montoInsumosConMargen = retiros.reduce((acc, r) => acc + Number(r.montoCobradoConMargen), 0);
 
     const montoAnticipoBase = Number(solicitud.montoAnticipoAprobado ?? 0);
     const montoAnticipoConRecargo = montoAnticipoBase * (1 + Number(solicitud.recargoAnticipoPct));

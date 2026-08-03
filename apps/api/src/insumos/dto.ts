@@ -7,6 +7,11 @@ export class CrearInsumoDto {
   @IsString() unidad: string;
 }
 
+export class ActualizarInsumoDto {
+  @IsOptional() @IsString() nombre?: string;
+  @IsOptional() @IsString() unidad?: string;
+}
+
 export class RegistrarCompraDto {
   @IsDateString() fecha: string;
   @IsNumber() @Min(0.01) cantidad: number;

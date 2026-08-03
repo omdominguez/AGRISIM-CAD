@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, Suspense } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '../../../../../lib/api';
 import EvolucionAreaChart from '../../../../../components/charts/EvolucionAreaChart';
@@ -105,8 +105,12 @@ function ParticipacionContenido() {
       </div>
       <p className="text-sm text-cad-apagado mb-4">
         {participacion.ciclo.cultivo} · {haSembradas.toFixed(2)} ha sembradas
-        {participacion.solicitud && (
-          <> · Financiamiento: <span className="font-medium">{ETIQUETA_ESTADO_SOLICITUD[participacion.solicitud.estado] ?? participacion.solicitud.estado}</span></>
+        {participacion.solicitud ? (
+          <> · Financiamiento: <Link href={`/solicitudes/${participacion.solicitud.id}`} className="font-medium text-cad-naranja hover:underline">
+            {ETIQUETA_ESTADO_SOLICITUD[participacion.solicitud.estado] ?? participacion.solicitud.estado}
+          </Link></>
+        ) : (
+          <> · <AbrirExpedienteBoton participacionId={participacionId} onCreado={recargar} /></>
         )}
       </p>
 
@@ -533,5 +537,30 @@ function NuevaInspeccionModal({
         </form>
       </div>
     </div>
+  );
+}
+
+function AbrirExpedienteBoton({ participacionId, onCreado }: { participacionId: string; onCreado: () => void }) {
+  const router = useRouter();
+  const [cargando, setCargando] = useState(false);
+
+  async function abrir() {
+    setCargando(true);
+    try {
+      const nueva = await apiFetch('/solicitudes', {
+        method: 'POST',
+        body: JSON.stringify({ cicloProductorId: participacionId }),
+      });
+      router.push(`/solicitudes/${nueva.id}`);
+    } catch (e: any) {
+      alert(e.message);
+      setCargando(false);
+    }
+  }
+
+  return (
+    <button onClick={abrir} disabled={cargando} className="font-medium text-cad-naranja hover:underline disabled:opacity-50">
+      {cargando ? 'Abriendo...' : '+ Abrir expediente de financiamiento'}
+    </button>
   );
 }

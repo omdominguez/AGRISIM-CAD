@@ -1,10 +1,10 @@
-import { Controller, Get, Post, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolUsuario } from '@prisma/client';
 import { InsumosService } from './insumos.service';
-import { CrearInsumoDto, RegistrarCompraDto, RegistrarRetiroDto } from './dto';
+import { CrearInsumoDto, ActualizarInsumoDto, RegistrarCompraDto, RegistrarRetiroDto } from './dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('insumos')
@@ -25,6 +25,18 @@ export class InsumosController {
   @Roles(RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE)
   crearInsumo(@Body() dto: CrearInsumoDto) {
     return this.service.crearInsumo(dto.nombre, dto.categoria, dto.unidad);
+  }
+
+  @Patch(':id')
+  @Roles(RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE)
+  actualizarInsumo(@Param('id') id: string, @Body() dto: ActualizarInsumoDto) {
+    return this.service.actualizarInsumo(id, dto.nombre, dto.unidad);
+  }
+
+  @Delete(':id')
+  @Roles(RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE)
+  eliminarInsumo(@Param('id') id: string) {
+    return this.service.eliminarInsumo(id);
   }
 
   @Post(':id/compras')

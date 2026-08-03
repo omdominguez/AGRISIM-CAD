@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { apiFetch } from '../../../lib/api';
 
 const ETIQUETA_ESTADO: Record<string, string> = {
@@ -68,8 +69,12 @@ export default function SolicitudesPage() {
         </thead>
         <tbody>
           {solicitudes.map((s) => (
-            <tr key={s.id} className="border-t">
-              <td className="p-3">{s.cicloProductor?.productor?.nombre}</td>
+            <tr key={s.id} className="border-t hover:bg-cad-superficie">
+              <td className="p-3">
+                <Link href={`/solicitudes/${s.id}`} className="font-medium text-cad-navy hover:text-cad-naranja hover:underline">
+                  {s.cicloProductor?.productor?.nombre}
+                </Link>
+              </td>
               <td className="p-3">{s.cicloProductor?.ciclo?.cultivo}</td>
               <td className="p-3">
                 <span className={`px-2 py-0.5 rounded-full text-xs ${COLOR_ESTADO[s.estado] ?? 'bg-cad-superficie text-cad-apagado'}`}>
@@ -86,8 +91,7 @@ export default function SolicitudesPage() {
 
       {solicitudes.length === 0 && !error && (
         <p className="text-sm text-cad-apagado mt-4">
-          Aún no hay expedientes abiertos. Se crean desde un Ciclo existente (endpoint POST /solicitudes) —
-          falta el formulario en UI, ver README → Roadmap Fase 1.
+          Aún no hay expedientes abiertos. Se crean desde la ficha de participación de un productor dentro de un ciclo.
         </p>
       )}
     </div>

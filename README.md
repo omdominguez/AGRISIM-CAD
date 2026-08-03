@@ -252,6 +252,44 @@ población de plantas) ya existía, pero no había pantalla para usarlo. Ahora s
 Esta es la pantalla de mayor uso diario para el técnico — con esto, el
 seguimiento de campo completo ya tiene interfaz de punta a punta.
 
+## Editar y borrar: Productores e Insumos
+
+- **Productores**: `DELETE /api/productores/:id` — bloqueado con mensaje
+  claro si el productor ya participó en algún ciclo (perdería historial de
+  financiamiento y visitas). Botones "Editar"/"Borrar productor" en la ficha.
+- **Insumos**: `PATCH` y `DELETE /api/insumos/:id` — el borrado se bloquea
+  si el insumo ya tiene compras o retiros registrados (perdería el
+  histórico de precio y de qué se le entregó a cada productor). Editar/
+  Borrar disponibles al abrir el detalle de cada insumo en `/insumos`.
+
+## Ficha completa del expediente de financiamiento
+
+La pieza que faltaba desde hace varias sesiones — `/solicitudes/:id` ahora
+tiene los 6 pasos completos en una sola pantalla:
+
+1. **Paquete tecnológico** — insumos presupuestados, margen de ESA
+   solicitud específica, anticipo opcional. Editable mientras no esté aprobada.
+2. **Aprobación / rechazo**.
+3. **Contrato** — número y fecha de firma.
+4. **Anticipo en efectivo** (si se solicitó) — se gira contra el monto aprobado.
+5. **Retiros de insumos contra el inventario real** — la pieza nueva: se
+   elige el insumo del catálogo (`/insumos`), el sistema valida stock,
+   congela el costo promedio del momento, aplica el margen de esta
+   solicitud, y genera el movimiento de cuenta solo. Columna derecha de
+   la pantalla, con historial completo.
+6. **Liquidación** — producción real × precio, comparado contra lo
+   realmente cobrado (que ahora sale de los retiros reales, no del
+   presupuesto — ver corrección abajo).
+
+**Se abre desde la ficha de participación** (`/ciclos/participaciones/:id`)
+con el botón "+ Abrir expediente de financiamiento", que aparece solo si
+ese productor todavía no tiene uno para ese ciclo.
+
+**Corrección importante en `liquidar()`**: antes calculaba el costo de
+insumos del paquete presupuestado (`itemsPaquete`). Ahora lo calcula de los
+**retiros reales** (`RetiroInsumo`) — si el productor usó menos o distinto
+de lo presupuestado, la liquidación refleja la realidad, no el plan.
+
 ## Inventario real de insumos (compras, stock, retiros incrementales)
 
 Cambio de fondo en el modelo de financiamiento, a partir de una corrección

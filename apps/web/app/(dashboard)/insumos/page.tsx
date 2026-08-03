@@ -130,25 +130,74 @@ function NuevoInsumoModal({ onClose, onCreado }: { onClose: () => void; onCreado
 function DetalleInsumoModal({ insumoId, onClose, onCambio }: { insumoId: string; onClose: () => void; onCambio: () => void }) {
   const [insumo, setInsumo] = useState<any | null>(null);
   const [mostrarCompra, setMostrarCompra] = useState(false);
+  const [editando, setEditando] = useState(false);
+  const [nombreEdit, setNombreEdit] = useState('');
+  const [unidadEdit, setUnidadEdit] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   function recargar() {
-    apiFetch(`/insumos/${insumoId}`).then(setInsumo).catch(() => {});
+    apiFetch(`/insumos/${insumoId}`).then((i) => {
+      setInsumo(i);
+      setNombreEdit(i.nombre);
+      setUnidadEdit(i.unidad);
+    }).catch(() => {});
   }
 
   useEffect(recargar, [insumoId]);
 
   if (!insumo) return null;
 
+  async function guardarEdicion() {
+    setError(null);
+    try {
+      await apiFetch(`/insumos/${insumoId}`, { method: 'PATCH', body: JSON.stringify({ nombre: nombreEdit, unidad: unidadEdit }) });
+      setEditando(false);
+      recargar();
+      onCambio();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
+  async function borrar() {
+    if (!confirm(`¿Borrar "${insumo.nombre}" del catálogo? Esta acción no se puede deshacer.`)) return;
+    try {
+      await apiFetch(`/insumos/${insumoId}`, { method: 'DELETE' });
+      onCambio();
+      onClose();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-cad-navy/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-xl p-6 w-full max-w-2xl my-8">
         <div className="flex items-center justify-between mb-1">
-          <p className="font-semibold text-cad-navy">{insumo.nombre}</p>
+          {editando ? (
+            <div className="flex gap-2 flex-1 mr-3">
+              <input value={nombreEdit} onChange={(e) => setNombreEdit(e.target.value)} className="flex-1 border border-cad-linea rounded px-2 py-1 text-sm font-semibold" />
+              <input value={unidadEdit} onChange={(e) => setUnidadEdit(e.target.value)} className="w-20 border border-cad-linea rounded px-2 py-1 text-sm" />
+              <button onClick={guardarEdicion} className="text-xs bg-cad-naranja text-white rounded px-3 py-1">Guardar</button>
+              <button onClick={() => setEditando(false)} className="text-xs text-cad-apagado">Cancelar</button>
+            </div>
+          ) : (
+            <p className="font-semibold text-cad-navy">{insumo.nombre}</p>
+          )}
           <button onClick={onClose} className="text-cad-apagado hover:text-cad-tinta text-xl leading-none">×</button>
         </div>
-        <p className="text-sm text-cad-apagado mb-4">
-          Stock: {Number(insumo.stockActual).toFixed(1)} {insumo.unidad} · Costo promedio: ${Number(insumo.costoPromedioPonderado).toFixed(2)}/{insumo.unidad}
-        </p>
+        {error && <p className="text-xs text-cad-danger mb-2">{error}</p>}
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-cad-apagado">
+            Stock: {Number(insumo.stockActual).toFixed(1)} {insumo.unidad} · Costo promedio: ${Number(insumo.costoPromedioPonderado).toFixed(2)}/{insumo.unidad}
+          </p>
+          {!editando && (
+            <div className="flex gap-3">
+              <button onClick={() => setEditando(true)} className="text-xs text-cad-naranja hover:underline">Editar</button>
+              <button onClick={borrar} className="text-xs text-cad-danger hover:underline">Borrar</button>
+            </div>
+          )}
+        </div>
 
         {mostrarCompra ? (
           <RegistrarCompraForm

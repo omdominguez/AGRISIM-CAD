@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -43,6 +43,12 @@ export class ProducersController {
   @Roles(...OPERATIVOS)
   actualizar(@Param('id') id: string, @Body() dto: ActualizarProductorDto) {
     return this.service.actualizar(id, dto);
+  }
+
+  @Delete(':id')
+  @Roles(RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE)
+  eliminar(@Param('id') id: string) {
+    return this.service.eliminar(id);
   }
 
   @Post(':id/fincas')

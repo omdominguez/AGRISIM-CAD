@@ -43,6 +43,37 @@ export class InsumosService {
     return this.prisma.insumo.create({ data: { nombre, categoria: categoria as any, unidad } });
   }
 
+  async actualizarInsumo(id: string, nombre?: string, unidad?: string) {
+    const insumo = await this.prisma.insumo.findUnique({ where: { id } });
+    if (!insumo) throw new NotFoundException('Insumo no encontrado.');
+    return this.prisma.insumo.update({
+      where: { id },
+      data: { nombre: nombre ?? undefined, unidad: unidad ?? undefined },
+    });
+  }
+
+  /**
+   * Solo se puede borrar un insumo si nunca tuvo movimiento real (ni
+   * compras ni retiros) — de lo contrario se perdería el histórico de
+   * precios y de qué se le entregó a cada productor.
+   */
+  async eliminarInsumo(id: string) {
+    const insumo = await this.prisma.insumo.findUnique({
+      where: { id },
+      include: { compras: true, retiros: true },
+    });
+    if (!insumo) throw new NotFoundException('Insumo no encontrado.');
+
+    if (insumo.compras.length > 0 || insumo.retiros.length > 0) {
+      throw new BadRequestException(
+        'Este insumo ya tiene compras o retiros registrados — no se puede borrar sin perder ese histórico. Si ya no se usa, simplemente déjalo con stock en 0.',
+      );
+    }
+
+    await this.prisma.insumo.delete({ where: { id } });
+    return { eliminado: true };
+  }
+
   /**
    * Compra: sube el stock y recalcula el costo promedio ponderado.
    *   nuevoPromedio = (stockActual × costoActual + cantidadComprada × costoCompra)
