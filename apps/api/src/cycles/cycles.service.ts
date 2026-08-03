@@ -189,7 +189,7 @@ export class CyclesService {
         participaciones: {
           include: {
             productor: { select: { id: true, nombre: true } },
-            lotes: true,
+            lotes: { include: { parcela: { select: { id: true, nombreLote: true } } } },
             solicitud: {
               include: { itemsPaquete: true, despachos: true, liquidacion: true },
             },
@@ -206,6 +206,8 @@ export class CyclesService {
     let financiadoTotal = 0;
     let desembolsadoTotal = 0;
     let produccionProyectadaQq = 0;
+    let produccionRealQq = 0;
+    let algunaLiquidada = false;
 
     const detalleProductores = ciclo.participaciones.map((p) => {
       const haComprometidas = Number(p.hectareasComprometidas);
@@ -228,6 +230,22 @@ export class CyclesService {
         : null;
       const produccionQq = rendProyectado != null ? rendProyectado * haEfectivas : 0;
 
+      const liquidacion = p.solicitud?.liquidacion ?? null;
+      const produccionRealQqProductor = liquidacion?.produccionRealQq != null ? Number(liquidacion.produccionRealQq) : null;
+      if (produccionRealQqProductor != null) {
+        produccionRealQq += produccionRealQqProductor;
+        algunaLiquidada = true;
+      }
+
+      // Semáforo simple por productor: qué tanto de lo sembrado sigue en
+      // pie según la última visita. Mismo criterio que usa el Mapa de
+      // Parcelas, aplicado aquí a nivel de participación completa.
+      let semaforo: 'VERDE' | 'AMBAR' | 'ROJO' | 'SIN_VISITA' = 'SIN_VISITA';
+      if (ultima) {
+        const ratio = haSembradas > 0 ? haEfectivas / haSembradas : 1;
+        semaforo = ratio >= 0.9 ? 'VERDE' : ratio >= 0.7 ? 'AMBAR' : 'ROJO';
+      }
+
       hectareasComprometidas += haComprometidas;
       hectareasSembradas += haSembradas;
       hectareasEfectivas += haEfectivas;
@@ -241,6 +259,12 @@ export class CyclesService {
         productor: p.productor.nombre,
         estadoSolicitud: p.solicitud?.estado ?? null,
         cantidadLotes: p.lotes.length,
+        lotesDetalle: p.lotes.map((l) => ({
+          loteSiembraId: l.id,
+          parcelaId: l.parcela.id,
+          nombreLote: l.parcela.nombreLote,
+          areaSembradaHa: Number(l.areaSembradaHa),
+        })),
         haComprometidas,
         haSembradas,
         haEfectivas,
@@ -248,9 +272,11 @@ export class CyclesService {
         desembolsado,
         rendimientoProyectadoQqHa: rendProyectado,
         produccionProyectadaQq: produccionQq,
+        produccionRealQq: produccionRealQqProductor,
         ultimaVisita: ultima?.fecha ?? null,
         tipoUltimaVisita: ultima?.tipoVisita ?? null,
         estadoFenologico: ultima?.estadoFenologico ?? null,
+        semaforo,
       };
     });
 
@@ -286,6 +312,7 @@ export class CyclesService {
         pendientePorDesembolsar: financiadoTotal - desembolsadoTotal,
       },
       produccionProyectadaQq,
+      produccionRealQq: algunaLiquidada ? produccionRealQq : null,
       detalleProductores,
     };
   }
@@ -297,6 +324,52 @@ export class CyclesService {
    * comparar Norte Verano de frijol contra el Norte Verano anterior de
    * frijol, no contra un ciclo de maíz que quedó en medio.
    */
+  /**
+   * Semáforo agregado de TODOS los ciclos activos — para el widget del
+   * Dashboard. Mismo criterio que el semáforo por productor dentro de un
+   * ciclo, pero sumado a través de todos los ciclos en curso o en
+   * planificación, así el gerente ve el pulso general sin entrar a cada uno.
+   */
+  async semaforoGeneral() {
+    const participaciones = await this.prisma.cicloProductor.findMany({
+      where: { ciclo: { estado: { in: ['EN_CURSO', 'PLANIFICACION'] } } },
+      include: {
+        productor: { select: { nombre: true } },
+        ciclo: { select: { id: true, nombre: true } },
+        lotes: true,
+        inspecciones: { orderBy: { fecha: 'desc' }, take: 1 },
+      },
+    });
+
+    const conteo = { VERDE: 0, AMBAR: 0, ROJO: 0, SIN_VISITA: 0 };
+    const alertas: any[] = [];
+
+    for (const p of participaciones) {
+      const haSembradas = p.lotes.reduce((acc, l) => acc + Number(l.areaSembradaHa), 0);
+      const ultima = p.inspecciones[0] ?? null;
+      const haEfectivas = ultima?.areaEfectivaHa != null ? Number(ultima.areaEfectivaHa) : haSembradas;
+
+      let semaforo: 'VERDE' | 'AMBAR' | 'ROJO' | 'SIN_VISITA' = 'SIN_VISITA';
+      if (ultima) {
+        const ratio = haSembradas > 0 ? haEfectivas / haSembradas : 1;
+        semaforo = ratio >= 0.9 ? 'VERDE' : ratio >= 0.7 ? 'AMBAR' : 'ROJO';
+      }
+      conteo[semaforo]++;
+
+      if (semaforo === 'ROJO') {
+        alertas.push({
+          cicloProductorId: p.id,
+          productor: p.productor.nombre,
+          ciclo: p.ciclo.nombre,
+          haSembradas,
+          haEfectivas,
+        });
+      }
+    }
+
+    return { conteo, total: participaciones.length, alertas };
+  }
+
   async comparativoCiclos(cultivo?: string) {
     const ciclos = await this.prisma.ciclo.findMany({
       where: cultivo ? { cultivo } : undefined,

@@ -252,6 +252,88 @@ población de plantas) ya existía, pero no había pantalla para usarlo. Ahora s
 Esta es la pantalla de mayor uso diario para el técnico — con esto, el
 seguimiento de campo completo ya tiene interfaz de punta a punta.
 
+## Inventario real de insumos (compras, stock, retiros incrementales)
+
+Cambio de fondo en el modelo de financiamiento, a partir de una corrección
+importante: los productores **no reciben el paquete completo de una vez** —
+retiran de a poco según lo van necesitando. Y CAD sí necesita un inventario
+real (cantidades compradas, histórico de precio), porque el sistema de
+ventas real es Odoo — esto aquí es la capa de financiamiento/cartera.
+
+**Modelos nuevos**: `Insumo` (catálogo con stock y costo promedio
+ponderado), `CompraInsumo` (cada compra sube el stock y deja histórico de
+precio pagado), `RetiroInsumo` (cada retiro de un productor baja el stock,
+congela el costo promedio de ESE momento, y le aplica el margen de ESA
+solicitud específica — no un % fijo del sistema).
+
+`PaqueteItem` (ya existía) sigue siendo el **plan/presupuesto aprobado**;
+`RetiroInsumo` es lo que **realmente** salió del almacén. Son cosas
+distintas a propósito — uno es la promesa, el otro es la ejecución real.
+
+**Costo por promedio ponderado**: cada compra recalcula
+`(stock×costoActual + cantidadComprada×costoCompra) / stockNuevo`. Cada
+retiro se congela a ese promedio en el momento — si el precio de compra
+sube después, no cambia retiros ya hechos.
+
+**Endpoints nuevos** (`/api/insumos`): catálogo, compras, retiros, e
+historial de retiros por solicitud. Cada retiro genera automáticamente su
+movimiento de cuenta (mismo patrón que ya usaban los despachos), y si es
+el primer retiro real de una solicitud, la pasa a estado "Despachada" sola.
+
+**Pantalla nueva**: `/insumos` — catálogo con stock y costo promedio,
+crear insumos nuevos, registrar compras, y ver histórico de compras +
+retiros por insumo.
+
+**Pendiente inmediato** (siguiente paso natural): la pantalla de la
+solicitud individual (`/financiamientos/:id`) con el formulario de retiro
+contra el inventario — el backend ya está listo para eso
+(`POST /api/insumos/retiros`), falta la interfaz.
+
+## Desviación agregada por ciclo + semáforo general
+
+Ampliación grande sobre lo anterior — ahora la desviación no solo se ve por
+productor individual, sino agregada a nivel de todo el ciclo, y hay un
+pulso general en el Dashboard.
+
+**En `/ciclos/:id`**:
+- Dos gráficas de barras: hectáreas (Comprometidas → Sembradas → Efectivas)
+  y producción (Proyectada vs. Real — esta última solo aparece si ya hay al
+  menos una liquidación cargada para ese ciclo; si no, dice honestamente
+  "sin cosechas liquidadas todavía" en vez de mostrar un cero engañoso).
+- Cada productor en la tabla tiene un punto de semáforo (mismo criterio
+  que el Mapa de Parcelas: % de área en pie vs. sembrada).
+- Las filas son expandibles (▸) — al abrir una, se ven sus lotes
+  individuales, cada uno con link directo a `/ciclos/participaciones/:id?lote=:loteId`.
+
+**En `/ciclos/participaciones/:id`**: si entras desde un lote específico
+(vía el link de arriba), la página filtra el historial de visitas y la
+gráfica de evolución a **solo ese lote**, con un aviso "Viendo solo: [nombre]
+· ver todos los lotes" para volver a la vista completa. Usa
+`useSearchParams`, envuelto en `Suspense` (obligatorio en Next.js para
+evitar el mismo tipo de error de build que ya vimos con Vercel).
+
+**En el Dashboard**: widget "Pulso general" — cuenta cuántos productores
+están en pie, con atención, en crítico, o sin visita todavía, a través de
+**todos** los ciclos activos (no uno a la vez), con un `GET
+/api/ciclos/semaforo-general` nuevo. Debajo, lista directa de quiénes están
+en estado crítico ahora mismo, con link directo a su ficha.
+
+## Gráfica de desviación: siembra real vs. mapeada
+
+En `/ciclos/participaciones/:id`, arriba del historial de visitas, una
+gráfica de línea (`EvolucionAreaChart.tsx`, con recharts) que muestra el
+área efectiva reportada en cada visita a través del tiempo, con una línea
+punteada de referencia en el área mapeada (KML).
+
+**Por diseño, el primer punto de esa línea siempre es el primer "Seguimiento"**
+— porque el campo "Área efectiva" solo aparece en el formulario para
+visitas de tipo Seguimiento o Cosecha, nunca en Preparación de tierra ni
+Siembra. Así que ese primer dato es automáticamente "cuánto se sembró
+efectivamente" (que puede ser menos que el área mapeada si no se sembró el
+100%), y cualquier caída después en la línea muestra pérdidas reales,
+capturadas visita a visita — sin necesidad de un campo nuevo, es una lectura
+distinta de datos que ya se venían guardando.
+
 ## Visitas por tipo — no todas piden lo mismo
 
 El formulario de "Registrar visita" ahora empieza eligiendo el **tipo**, y

@@ -19,6 +19,7 @@ export default function DashboardPage() {
   const [ciclos, setCiclos] = useState<any[]>([]);
   const [noticias, setNoticias] = useState<any[]>([]);
   const [commodities, setCommodities] = useState<any[]>([]);
+  const [semaforo, setSemaforo] = useState<any | null>(null);
   const [nombreUsuario, setNombreUsuario] = useState('');
 
   useEffect(() => {
@@ -28,6 +29,7 @@ export default function DashboardPage() {
     apiFetch('/ciclos').then(setCiclos).catch(() => {});
     apiFetch('/noticias').then((n) => setNoticias(n.slice(0, 4))).catch(() => {});
     apiFetch('/noticias/commodities').then(setCommodities).catch(() => {});
+    apiFetch('/ciclos/semaforo-general').then(setSemaforo).catch(() => {});
   }, []);
 
   const ciclosEnCurso = ciclos.filter((c) => c.estado === 'EN_CURSO' || c.estado === 'PLANIFICACION');
@@ -99,6 +101,36 @@ export default function DashboardPage() {
           Referencia de futuros CME/CBOT (Yahoo Finance) — precio internacional, no es el precio local de compra a productores.
         </p>
       </div>
+
+      {/* Semáforo general de productores activos */}
+      {semaforo && semaforo.total > 0 && (
+        <div className="bg-white border border-cad-linea rounded-xl p-4 mb-8">
+          <p className="font-semibold text-cad-navy mb-3">
+            Pulso general — {semaforo.total} productor{semaforo.total !== 1 ? 'es' : ''} en ciclos activos
+          </p>
+          <div className="grid grid-cols-4 gap-3 mb-3">
+            <SemaforoStat label="En pie" valor={semaforo.conteo.VERDE} color="bg-cad-verde" />
+            <SemaforoStat label="Atención" valor={semaforo.conteo.AMBAR} color="bg-cad-ambar" />
+            <SemaforoStat label="Crítico" valor={semaforo.conteo.ROJO} color="bg-cad-danger" />
+            <SemaforoStat label="Sin visita" valor={semaforo.conteo.SIN_VISITA} color="bg-cad-apagado" />
+          </div>
+          {semaforo.alertas.length > 0 && (
+            <div className="border-t border-cad-linea pt-3 space-y-1.5">
+              <p className="text-xs font-medium text-cad-apagado uppercase mb-1">En estado crítico ahora mismo</p>
+              {semaforo.alertas.slice(0, 4).map((a: any) => (
+                <Link
+                  key={a.cicloProductorId}
+                  href={`/ciclos/participaciones/${a.cicloProductorId}`}
+                  className="flex items-center justify-between text-sm hover:text-cad-naranja"
+                >
+                  <span>{a.productor} <span className="text-cad-apagado">· {a.ciclo}</span></span>
+                  <span className="text-cad-danger text-xs">{a.haEfectivas.toFixed(1)} / {a.haSembradas.toFixed(1)} ha</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Ciclos activos */}
@@ -183,5 +215,17 @@ function AccesoRapido({ href, label }: { href: string; label: string }) {
     <Link href={href} className="bg-white border border-cad-linea rounded-xl p-4 text-center text-sm font-medium hover:border-cad-naranja hover:text-cad-naranja transition-colors">
       {label}
     </Link>
+  );
+}
+
+function SemaforoStat({ label, valor, color }: { label: string; valor: number; color: string }) {
+  return (
+    <div className="flex items-center gap-2 bg-cad-superficie rounded-lg p-3">
+      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${color}`} />
+      <div>
+        <p className="text-lg font-semibold text-cad-navy leading-none">{valor}</p>
+        <p className="text-xs text-cad-apagado mt-0.5">{label}</p>
+      </div>
+    </div>
   );
 }

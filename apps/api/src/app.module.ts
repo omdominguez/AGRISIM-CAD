@@ -8,6 +8,7 @@ import { ParcelsModule } from './parcels/parcels.module';
 import { CyclesModule } from './cycles/cycles.module';
 import { FieldModule } from './field/field.module';
 import { SolicitudesModule } from './solicitudes/solicitudes.module';
+import { InsumosModule } from './insumos/insumos.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { FinancingSimulationsModule } from './financing-simulations/financing-simulations.module';
 import { NewsFeedModule } from './news-feed/news-feed.module';
@@ -23,6 +24,7 @@ import { NewsFeedModule } from './news-feed/news-feed.module';
     CyclesModule,      // ciclo-campaña, participaciones, lotes de siembra
     FieldModule,       // inspecciones, población de plantas, fitosanitario
     SolicitudesModule, // expediente de financiamiento (6 pasos)
+    InsumosModule,     // inventario real: compras, stock, retiros
     AccountsModule,    // estados de cuenta y proyección de efectivo
     FinancingSimulationsModule,
     NewsFeedModule,

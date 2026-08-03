@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '../../../../lib/api';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const ETIQUETA_ESTADO_CULTIVO: Record<string, string> = {
   PREPARACION_TIERRA: 'Prep. de tierra',
@@ -23,6 +24,13 @@ const ETIQUETA_TIPO_VISITA: Record<string, string> = {
   COSECHA: 'Cosecha',
 };
 
+const COLOR_SEMAFORO: Record<string, string> = {
+  VERDE: '#008747',
+  AMBAR: '#F8B345',
+  ROJO: '#B23A3A',
+  SIN_VISITA: '#999999',
+};
+
 export default function CicloDetallePage() {
   const params = useParams();
   const cicloId = params.id as string;
@@ -33,6 +41,7 @@ export default function CicloDetallePage() {
   const [error, setError] = useState<string | null>(null);
   const [mostrarInscripcion, setMostrarInscripcion] = useState(false);
   const [participacionParaLote, setParticipacionParaLote] = useState<string | null>(null);
+  const [filaAbierta, setFilaAbierta] = useState<string | null>(null);
 
   function recargar() {
     apiFetch(`/ciclos/${cicloId}/resumen`).then(setResumen).catch((e) => setError(e.message));
@@ -132,11 +141,70 @@ export default function CicloDetallePage() {
         </div>
       )}
 
+      <p className="font-semibold text-cad-navy mb-3">Desviación: planeado vs. real</p>
+      <div className="grid md:grid-cols-2 gap-4 mb-8">
+        <div className="bg-white border border-cad-linea rounded-xl p-4">
+          <p className="text-xs text-cad-apagado mb-2">Hectáreas — comprometidas → sembradas → efectivas en pie</p>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart
+              data={[
+                { etapa: 'Comprometidas', ha: real.hectareasComprometidas },
+                { etapa: 'Sembradas', ha: real.hectareasSembradas },
+                { etapa: 'Efectivas', ha: real.hectareasEfectivas },
+              ]}
+              margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7E8" />
+              <XAxis dataKey="etapa" tick={{ fontSize: 11, fill: '#666666' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#666666' }} width={40} />
+              <Tooltip formatter={(v: number) => [`${v.toFixed(1)} ha`, '']} contentStyle={{ fontSize: 12, borderRadius: 8, borderColor: '#E5E7E8' }} />
+              <Bar dataKey="ha" radius={[4, 4, 0, 0]}>
+                <Cell fill="#012D37" />
+                <Cell fill="#2E6B8C" />
+                <Cell fill={real.hectareasEfectivas < real.hectareasSembradas ? '#B23A3A' : '#008747'} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white border border-cad-linea rounded-xl p-4">
+          <p className="text-xs text-cad-apagado mb-2">Producción — proyectada vs. real (qq)</p>
+          {resumen.produccionRealQq != null ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart
+                data={[
+                  { etapa: 'Proyectada', qq: resumen.produccionProyectadaQq },
+                  { etapa: 'Real (liquidada)', qq: resumen.produccionRealQq },
+                ]}
+                margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7E8" />
+                <XAxis dataKey="etapa" tick={{ fontSize: 11, fill: '#666666' }} />
+                <YAxis tick={{ fontSize: 11, fill: '#666666' }} width={40} />
+                <Tooltip formatter={(v: number) => [`${v.toFixed(0)} qq`, '']} contentStyle={{ fontSize: 12, borderRadius: 8, borderColor: '#E5E7E8' }} />
+                <Bar dataKey="qq" radius={[4, 4, 0, 0]}>
+                  <Cell fill="#F8B345" />
+                  <Cell fill={resumen.produccionRealQq < resumen.produccionProyectadaQq ? '#B23A3A' : '#008747'} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[180px] flex items-center justify-center">
+              <p className="text-sm text-cad-apagado text-center">
+                Sin cosechas liquidadas todavía.<br />
+                <span className="text-xs">Se compara aquí en cuanto se liquide la primera solicitud de este ciclo.</span>
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
       <p className="font-semibold text-cad-navy mb-3">Productores del ciclo</p>
       <div className="bg-white border border-cad-linea rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-cad-superficie text-left text-cad-apagado">
             <tr>
+              <th className="p-3"></th>
               <th className="p-3 font-medium">Productor</th>
               <th className="p-3 font-medium">Estado</th>
               <th className="p-3 font-medium">Lotes</th>
@@ -149,12 +217,27 @@ export default function CicloDetallePage() {
           </thead>
           <tbody>
             {resumen.detalleProductores.map((p: any) => (
-              <tr key={p.cicloProductorId} className="border-t border-cad-linea">
-                <td className="p-3">
-                  <Link href={`/ciclos/participaciones/${p.cicloProductorId}`} className="font-medium text-cad-navy hover:text-cad-naranja hover:underline">
-                    {p.productor}
-                  </Link>
-                </td>
+              <Fragment key={p.cicloProductorId}>
+                <tr className="border-t border-cad-linea">
+                  <td className="p-3 pl-4">
+                    {p.cantidadLotes > 0 && (
+                      <button
+                        onClick={() => setFilaAbierta(filaAbierta === p.cicloProductorId ? null : p.cicloProductorId)}
+                        className="text-cad-apagado hover:text-cad-navy w-5 h-5 flex items-center justify-center"
+                        title="Ver lotes"
+                      >
+                        {filaAbierta === p.cicloProductorId ? '▾' : '▸'}
+                      </button>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_SEMAFORO[p.semaforo] }} title={p.semaforo} />
+                      <Link href={`/ciclos/participaciones/${p.cicloProductorId}`} className="font-medium text-cad-navy hover:text-cad-naranja hover:underline">
+                        {p.productor}
+                      </Link>
+                    </div>
+                  </td>
                 <td className="p-3">
                   {p.estadoFenologico ? (
                     <span className="px-2 py-0.5 rounded-full bg-cad-verde/15 text-cad-verde text-xs">
@@ -181,6 +264,26 @@ export default function CicloDetallePage() {
                   </button>
                 </td>
               </tr>
+              {filaAbierta === p.cicloProductorId && p.lotesDetalle.length > 0 && (
+                <tr className="bg-cad-superficie/60">
+                  <td></td>
+                  <td colSpan={8} className="px-3 pb-3">
+                    <div className="grid sm:grid-cols-3 gap-2 pt-1">
+                      {p.lotesDetalle.map((l: any) => (
+                        <Link
+                          key={l.loteSiembraId}
+                          href={`/ciclos/participaciones/${p.cicloProductorId}?lote=${l.loteSiembraId}`}
+                          className="bg-white border border-cad-linea rounded-lg p-2.5 text-xs hover:border-cad-naranja transition-colors"
+                        >
+                          <p className="font-medium text-cad-navy">{l.nombreLote}</p>
+                          <p className="text-cad-apagado">{l.areaSembradaHa.toFixed(2)} ha · ver avance →</p>
+                        </Link>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>

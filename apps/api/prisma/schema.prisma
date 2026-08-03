@@ -44,6 +44,8 @@ model Usuario {
   despachosRealizados      Despacho[]                @relation("DespachoResponsable")
   inspeccionesRealizadas   InspeccionCampo[]         @relation("InspeccionTecnico")
   registrosLluvia          RegistroLluvia[]          @relation("RegistroLluviaPor")
+  comprasRegistradas       CompraInsumo[]            @relation("CompraRegistradaPor")
+  retirosRegistrados       RetiroInsumo[]            @relation("RetiroRegistradoPor")
   movimientosRegistrados   MovimientoCuenta[]        @relation("MovimientoRegistradoPor")
   logsAuditoria            LogAuditoria[]
 
@@ -438,6 +440,7 @@ model SolicitudFinanciamiento {
   updatedAt DateTime @updatedAt
 
   itemsPaquete PaqueteItem[]
+  retiros      RetiroInsumo[]
   contrato     Contrato?
   despachos    Despacho[]
   liquidacion  Liquidacion?
@@ -460,6 +463,79 @@ model PaqueteItem {
   createdAt DateTime @default(now())
 
   @@map("paquete_items")
+}
+
+// ==========================================================================
+// INVENTARIO DE INSUMOS — CAD compra a stock (con precio real e histórico),
+// y los productores retiran de a poco según lo van necesitando, no todo el
+// paquete de una vez. `PaqueteItem` arriba sigue siendo el plan/presupuesto
+// aprobado; esto de aquí es lo que realmente entró y salió del almacén.
+// ==========================================================================
+
+model Insumo {
+  id        String          @id @default(uuid())
+  nombre    String
+  categoria CategoriaInsumo
+  unidad    String // kg, l, saco, unidad...
+
+  // Se recalculan solos con cada compra/retiro — nunca se editan a mano.
+  stockActual            Decimal @default(0) @db.Decimal(14, 2)
+  costoPromedioPonderado Decimal @default(0) @db.Decimal(14, 4)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  compras CompraInsumo[]
+  retiros RetiroInsumo[]
+
+  @@map("insumos")
+}
+
+// Cada compra sube el stock y deja un registro histórico del precio pagado
+// ese día — así se puede ver cómo ha subido/bajado el costo en el tiempo.
+model CompraInsumo {
+  id       String @id @default(uuid())
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id])
+
+  fecha         DateTime
+  cantidad      Decimal  @db.Decimal(14, 2)
+  costoUnitario Decimal  @db.Decimal(14, 4)
+  proveedor     String?
+  notas         String?
+
+  registradoPorId String?
+  registradoPor   Usuario? @relation("CompraRegistradaPor", fields: [registradoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("compras_insumo")
+}
+
+// Un retiro real de un productor contra su expediente aprobado — baja el
+// stock, congela el costo promedio ponderado del momento (no cambia si el
+// precio de compra sube después), y le aplica el margen de ESA solicitud
+// específica (no un porcentaje fijo del sistema).
+model RetiroInsumo {
+  id          String                  @id @default(uuid())
+  insumoId    String
+  insumo      Insumo                  @relation(fields: [insumoId], references: [id])
+  solicitudId String
+  solicitud   SolicitudFinanciamiento @relation(fields: [solicitudId], references: [id])
+
+  fecha    DateTime
+  cantidad Decimal  @db.Decimal(14, 2)
+
+  costoUnitarioAlMomento Decimal @db.Decimal(14, 4) // costo promedio ponderado congelado
+  costoTotal             Decimal @db.Decimal(14, 2) // cantidad × costoUnitarioAlMomento
+  montoCobradoConMargen  Decimal @db.Decimal(14, 2) // lo que realmente se le carga al productor
+
+  registradoPorId String?
+  registradoPor   Usuario? @relation("RetiroRegistradoPor", fields: [registradoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("retiros_insumo")
 }
 
 model Contrato {

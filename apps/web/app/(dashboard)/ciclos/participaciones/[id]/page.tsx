@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '../../../../../lib/api';
+import EvolucionAreaChart from '../../../../../components/charts/EvolucionAreaChart';
 
 const ETIQUETA_TIPO_VISITA: Record<string, string> = {
   PREPARACION_TIERRA: 'Preparación de tierra',
@@ -50,8 +51,18 @@ const ETIQUETA_ESTADO_SOLICITUD: Record<string, string> = {
 };
 
 export default function ParticipacionPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-cad-apagado">Cargando...</p>}>
+      <ParticipacionContenido />
+    </Suspense>
+  );
+}
+
+function ParticipacionContenido() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const participacionId = params.id as string;
+  const loteFiltro = searchParams.get('lote');
 
   const [participacion, setParticipacion] = useState<any | null>(null);
   const [inspecciones, setInspecciones] = useState<any[]>([]);
@@ -69,7 +80,14 @@ export default function ParticipacionPage() {
   if (!participacion) return <p className="text-sm text-cad-apagado">Cargando...</p>;
 
   const haSembradas = participacion.lotes.reduce((acc: number, l: any) => acc + Number(l.areaSembradaHa), 0);
-  const ultimaInspeccion = inspecciones[0] ?? null;
+
+  const loteActivo = loteFiltro ? participacion.lotes.find((l: any) => l.id === loteFiltro) : null;
+  const inspeccionesFiltradas = loteFiltro
+    ? inspecciones.filter((i: any) => i.loteId === loteFiltro)
+    : inspecciones;
+  const areaReferencia = loteActivo ? Number(loteActivo.areaSembradaHa) : haSembradas;
+
+  const ultimaInspeccion = inspeccionesFiltradas[0] ?? null;
 
   return (
     <div>
@@ -135,12 +153,40 @@ export default function ParticipacionPage() {
         )}
       </div>
 
+      {participacion.lotes.length === 0 && inspecciones.length > 0 && (
+        <div className="bg-cad-ambar/10 border border-cad-ambar/30 rounded-xl p-4 mb-8">
+          <p className="text-sm text-cad-tinta">
+            ⚠ Ya hay visitas registradas para este productor, pero <strong>no tiene ningún lote agregado</strong>.
+            Por eso "ha sembradas" muestra 0 — ese número sale de los lotes, no de las visitas. Vuelve a
+            {' '}<Link href={`/ciclos/${participacion.ciclo.id}`} className="underline font-medium">la página del ciclo</Link>{' '}
+            y usa "+ Agregar lote" para vincular la parcela correspondiente.
+          </p>
+        </div>
+      )}
+
+      {inspeccionesFiltradas.length > 0 && (
+        <div className="bg-white border border-cad-linea rounded-xl p-4 mb-8">
+          <p className="font-semibold text-cad-navy mb-3">Evolución del área sembrada</p>
+          <EvolucionAreaChart inspecciones={inspeccionesFiltradas} areaSembradaHa={areaReferencia} />
+        </div>
+      )}
+
       <p className="font-semibold text-cad-navy mb-3">
-        Historial de visitas <span className="text-cad-apagado font-normal text-sm">— {inspecciones.length} registrada{inspecciones.length !== 1 ? 's' : ''}</span>
+        Historial de visitas <span className="text-cad-apagado font-normal text-sm">— {inspeccionesFiltradas.length} registrada{inspeccionesFiltradas.length !== 1 ? 's' : ''}</span>
       </p>
 
+      {loteActivo && (
+        <div className="flex items-center gap-2 mb-3 text-sm">
+          <span className="text-cad-apagado">Viendo solo:</span>
+          <span className="font-medium text-cad-navy">{loteActivo.parcela.nombreLote}</span>
+          <Link href={`/ciclos/participaciones/${participacionId}`} className="text-cad-naranja hover:underline text-xs">
+            ver todos los lotes →
+          </Link>
+        </div>
+      )}
+
       <div className="space-y-3">
-        {inspecciones.map((i: any) => (
+        {inspeccionesFiltradas.map((i: any) => (
           <div key={i.id} className="bg-white border border-cad-linea rounded-xl p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -206,7 +252,7 @@ export default function ParticipacionPage() {
             )}
           </div>
         ))}
-        {inspecciones.length === 0 && (
+        {inspeccionesFiltradas.length === 0 && (
           <p className="text-sm text-cad-apagado">Sin visitas registradas todavía.</p>
         )}
       </div>

@@ -24,6 +24,11 @@ export class CyclesController {
     return this.service.comparativoCiclos(cultivo);
   }
 
+  @Get('semaforo-general')
+  semaforoGeneral() {
+    return this.service.semaforoGeneral();
+  }
+
   @Get(':id')
   obtener(@Param('id') id: string) {
     return this.service.obtener(id);
