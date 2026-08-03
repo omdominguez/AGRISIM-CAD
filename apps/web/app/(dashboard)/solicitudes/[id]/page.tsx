@@ -27,13 +27,13 @@ export default function SolicitudDetallePage() {
   const solicitudId = params.id as string;
 
   const [solicitud, setSolicitud] = useState<any | null>(null);
-  const [retiros, setRetiros] = useState<any[]>([]);
+  const [ventas, setVentas] = useState<any[]>([]);
   const [insumos, setInsumos] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   function recargar() {
     apiFetch(`/solicitudes/${solicitudId}`).then(setSolicitud).catch((e) => setError(e.message));
-    apiFetch(`/insumos/solicitudes/${solicitudId}/retiros`).then(setRetiros).catch(() => {});
+    apiFetch(`/insumos/ventas/solicitud/${solicitudId}`).then(setVentas).catch(() => {});
     apiFetch('/insumos').then(setInsumos).catch(() => {});
   }
 
@@ -42,8 +42,8 @@ export default function SolicitudDetallePage() {
   if (error) return <p className="text-sm text-cad-danger">{error}</p>;
   if (!solicitud) return <p className="text-sm text-cad-apagado">Cargando...</p>;
 
-  const totalRetirado = retiros.reduce((acc, r) => acc + Number(r.montoCobradoConMargen), 0);
-  const totalCostoBase = retiros.reduce((acc, r) => acc + Number(r.costoTotal), 0);
+  const totalRetirado = ventas.reduce((acc, v) => acc + Number(v.totalConMargen), 0);
+  const totalCostoBase = ventas.reduce((acc, v) => acc + Number(v.subtotalCosto), 0);
 
   return (
     <div>
@@ -60,8 +60,8 @@ export default function SolicitudDetallePage() {
 
       {/* Resumen de cuenta */}
       <div className="grid md:grid-cols-3 gap-4 mb-8">
-        <Stat label="Retirado (costo base)" valor={`$${totalCostoBase.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
-        <Stat label="Cobrado al productor (con margen)" valor={`$${totalRetirado.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} destacado />
+        <Stat label="Facturado (costo base)" valor={`$${totalCostoBase.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} />
+        <Stat label="Cuenta por cobrar (con margen)" valor={`$${totalRetirado.toLocaleString('en-US', { maximumFractionDigits: 0 })}`} destacado />
         <Stat label="Margen de este expediente" valor={`${(Number(solicitud.margenInsumosPct) * 100).toFixed(0)}%`} />
       </div>
 
@@ -75,9 +75,9 @@ export default function SolicitudDetallePage() {
           <LiquidacionSeccion solicitud={solicitud} onCambio={recargar} />
         </div>
 
-        {/* Columna derecha: retiros reales contra inventario */}
+        {/* Columna derecha: facturas de venta contra inventario */}
         <div>
-          <RetirosSeccion solicitud={solicitud} insumos={insumos} retiros={retiros} onCambio={recargar} />
+          <VentasSeccion solicitud={solicitud} insumos={insumos} ventas={ventas} onCambio={recargar} />
         </div>
       </div>
     </div>
@@ -386,67 +386,107 @@ function AnticipoSeccion({ solicitud, onCambio }: { solicitud: any; onCambio: ()
 // ============================================================
 // RETIROS DE INSUMOS — contra el inventario real, incremental
 // ============================================================
-function RetirosSeccion({ solicitud, insumos, retiros, onCambio }: { solicitud: any; insumos: any[]; retiros: any[]; onCambio: () => void }) {
-  const [insumoId, setInsumoId] = useState('');
-  const [cantidad, setCantidad] = useState('');
+function VentasSeccion({ solicitud, insumos, ventas, onCambio }: { solicitud: any; insumos: any[]; ventas: any[]; onCambio: () => void }) {
+  const [lineas, setLineas] = useState<any[]>([{ insumoId: '', cantidad: '' }]);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
-  const puedeRetirar = ['CONTRATO_FIRMADO', 'DESPACHADA', 'EN_SEGUIMIENTO'].includes(solicitud.estado);
-  const insumoSeleccionado = insumos.find((i) => i.id === insumoId);
+  const puedeFacturar = ['CONTRATO_FIRMADO', 'DESPACHADA', 'EN_SEGUIMIENTO'].includes(solicitud.estado);
 
-  async function retirar(e: React.FormEvent) {
+  function agregarLinea() {
+    setLineas((p) => [...p, { insumoId: '', cantidad: '' }]);
+  }
+  function actualizarLinea(idx: number, campo: string, valor: string) {
+    setLineas((p) => p.map((l, i) => (i === idx ? { ...l, [campo]: valor } : l)));
+  }
+  function quitarLinea(idx: number) {
+    setLineas((p) => p.filter((_, i) => i !== idx));
+  }
+
+  const totalEstimado = lineas.reduce((acc, l) => {
+    const insumo = insumos.find((i) => i.id === l.insumoId);
+    if (!insumo || !l.cantidad) return acc;
+    const costo = Number(l.cantidad) * Number(insumo.costoPromedioPonderado);
+    return acc + costo * (1 + Number(solicitud.margenInsumosPct));
+  }, 0);
+
+  async function facturar(e: React.FormEvent) {
     e.preventDefault();
     setError(null); setCargando(true);
     try {
-      await apiFetch('/insumos/retiros', {
+      const items = lineas
+        .filter((l) => l.insumoId && l.cantidad)
+        .map((l) => ({ insumoId: l.insumoId, cantidad: Number(l.cantidad) }));
+      if (items.length === 0) {
+        setError('Agrega al menos una línea con insumo y cantidad.');
+        setCargando(false);
+        return;
+      }
+      await apiFetch('/insumos/ventas', {
         method: 'POST',
-        body: JSON.stringify({
-          insumoId, solicitudId: solicitud.id, cantidad: Number(cantidad),
-          fecha: new Date().toISOString().slice(0, 10),
-        }),
+        body: JSON.stringify({ solicitudId: solicitud.id, fecha: new Date().toISOString().slice(0, 10), items }),
       });
-      setCantidad(''); setInsumoId('');
+      setLineas([{ insumoId: '', cantidad: '' }]);
       onCambio();
     } catch (e: any) { setError(e.message); } finally { setCargando(false); }
   }
 
   return (
-    <Seccion titulo="Retiros de insumos (contra inventario real)">
-      {!puedeRetirar && (
-        <p className="text-xs text-cad-apagado mb-3">El contrato debe estar firmado antes de poder retirar insumos.</p>
+    <Seccion titulo="Facturar entrega de insumos (venta contra inventario real)">
+      {!puedeFacturar && (
+        <p className="text-xs text-cad-apagado mb-3">El contrato debe estar firmado antes de poder facturar insumos.</p>
       )}
-      {puedeRetirar && (
-        <form onSubmit={retirar} className="space-y-2 mb-4">
-          <select required value={insumoId} onChange={(e) => setInsumoId(e.target.value)} className="w-full border border-cad-linea rounded px-3 py-2 text-sm">
-            <option value="">Selecciona un insumo...</option>
-            {insumos.map((i) => (
-              <option key={i.id} value={i.id}>{i.nombre} — stock: {Number(i.stockActual).toFixed(1)} {i.unidad}</option>
-            ))}
-          </select>
-          <div className="flex gap-2">
-            <input type="number" step="any" required placeholder={`Cantidad${insumoSeleccionado ? ` (${insumoSeleccionado.unidad})` : ''}`}
-              value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="flex-1 border border-cad-linea rounded px-3 py-2 text-sm" />
-            <button type="submit" disabled={cargando} className="text-sm bg-cad-naranja text-white font-medium rounded px-4 py-2 hover:brightness-95 disabled:opacity-50">
-              {cargando ? 'Registrando...' : 'Retirar'}
-            </button>
+      {puedeFacturar && (
+        <form onSubmit={facturar} className="space-y-2 mb-4">
+          {lineas.map((linea, idx) => {
+            const insumoSeleccionado = insumos.find((i) => i.id === linea.insumoId);
+            return (
+              <div key={idx} className="flex gap-2">
+                <select value={linea.insumoId} onChange={(e) => actualizarLinea(idx, 'insumoId', e.target.value)}
+                  className="flex-1 border border-cad-linea rounded px-3 py-2 text-sm">
+                  <option value="">Selecciona un insumo...</option>
+                  {insumos.map((i) => (
+                    <option key={i.id} value={i.id}>{i.nombre} — stock: {Number(i.stockActual).toFixed(1)} {i.unidad}</option>
+                  ))}
+                </select>
+                <input type="number" step="any" placeholder={insumoSeleccionado ? insumoSeleccionado.unidad : 'cantidad'}
+                  value={linea.cantidad} onChange={(e) => actualizarLinea(idx, 'cantidad', e.target.value)}
+                  className="w-28 border border-cad-linea rounded px-3 py-2 text-sm" />
+                {lineas.length > 1 && (
+                  <button type="button" onClick={() => quitarLinea(idx)} className="text-xs text-cad-danger px-1">Quitar</button>
+                )}
+              </div>
+            );
+          })}
+          <button type="button" onClick={agregarLinea} className="text-xs text-cad-naranja hover:underline">+ Agregar línea</button>
+
+          <div className="flex items-center justify-between pt-2 border-t border-cad-linea">
+            <p className="text-xs text-cad-apagado">Total estimado de la factura (con margen)</p>
+            <p className="text-sm font-semibold text-cad-navy">${totalEstimado.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
           </div>
+
           {error && <p className="text-xs text-cad-danger">{error}</p>}
+          <button type="submit" disabled={cargando}
+            className="w-full bg-cad-naranja text-white font-medium rounded py-2 text-sm hover:brightness-95 disabled:opacity-50">
+            {cargando ? 'Facturando...' : 'Generar factura y descontar inventario'}
+          </button>
         </form>
       )}
 
-      <p className="text-xs font-medium text-cad-apagado uppercase mb-2">Historial de retiros</p>
+      <p className="text-xs font-medium text-cad-apagado uppercase mb-2">Facturas emitidas</p>
       <div className="space-y-2">
-        {retiros.map((r: any) => (
-          <div key={r.id} className="flex items-center justify-between bg-cad-superficie rounded-lg p-2.5 text-sm">
-            <div>
-              <p className="font-medium">{r.insumo.nombre}</p>
-              <p className="text-xs text-cad-apagado">{new Date(r.fecha).toLocaleDateString('es-VE')} · {Number(r.cantidad)} {r.insumo.unidad}</p>
+        {ventas.map((v: any) => (
+          <div key={v.id} className="bg-cad-superficie rounded-lg p-2.5 text-sm">
+            <div className="flex items-center justify-between mb-1">
+              <p className="font-medium">{v.numeroFactura}</p>
+              <p className="text-sm font-semibold text-cad-navy">${Number(v.totalConMargen).toFixed(2)}</p>
             </div>
-            <p className="text-sm font-semibold text-cad-navy">${Number(r.montoCobradoConMargen).toFixed(2)}</p>
+            <p className="text-xs text-cad-apagado">
+              {new Date(v.fecha).toLocaleDateString('es-VE')} · {v.items.map((it: any) => `${Number(it.cantidad)} ${it.insumo.unidad} de ${it.insumo.nombre}`).join(', ')}
+            </p>
           </div>
         ))}
-        {retiros.length === 0 && <p className="text-xs text-cad-apagado">Sin retiros todavía.</p>}
+        {ventas.length === 0 && <p className="text-xs text-cad-apagado">Sin facturas todavía.</p>}
       </div>
     </Seccion>
   );

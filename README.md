@@ -252,6 +252,37 @@ población de plantas) ya existía, pero no había pantalla para usarlo. Ahora s
 Esta es la pantalla de mayor uso diario para el técnico — con esto, el
 seguimiento de campo completo ya tiene interfaz de punta a punta.
 
+## Módulos de Compras y Ventas (facturación real de insumos)
+
+Reemplaza el "retiro suelto por insumo" de la entrega anterior por el
+modelo real: una **factura con varias líneas** (ej. semilla + fertilizante
+en la misma entrega), que descuenta el inventario y genera la cuenta por
+cobrar del productor automáticamente. `RetiroInsumo` se deja intacto por
+continuidad de lo ya cargado, pero deja de ser el mecanismo activo.
+
+**Modelos nuevos**: `Venta` (la factura — número, fecha, subtotal, total
+con margen) y `VentaItem` (cada línea — insumo, cantidad, costo congelado,
+monto cobrado).
+
+**`/compras`** — módulo dedicado con todas las entradas de inventario
+juntas (antes solo se veían por insumo individual), con el total invertido
+arriba y un botón para registrar una compra nueva eligiendo el insumo de
+un desplegable.
+
+**`/ventas`** — módulo dedicado con todas las facturas emitidas a
+productores, filas expandibles para ver el detalle de cada línea, total
+facturado y ganancia por margen acumulada, con link directo al expediente
+de cada una.
+
+**En `/solicitudes/:id`**: la sección de retiros se reemplazó por
+"Facturar entrega de insumos" — un formulario de varias líneas (agregar/
+quitar insumos con su cantidad), muestra el total estimado con margen
+antes de confirmar, y al generar la factura: valida stock de TODAS las
+líneas antes de tocar cualquiera (si una falla, ninguna se descuenta),
+congela el costo promedio de cada insumo, y crea UN SOLO movimiento de
+cuenta con el total — así la cartera del productor ve "Factura V-00042"
+como un cargo, igual que vería una factura real.
+
 ## Editar y borrar: Productores e Insumos
 
 - **Productores**: `DELETE /api/productores/:id` — bloqueado con mensaje

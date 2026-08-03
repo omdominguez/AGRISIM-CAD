@@ -18,6 +18,8 @@ const NAV: ItemNav[] = [
   { href: '/productores', label: 'Productores' },
   { href: '/solicitudes', label: 'Financiamientos' },
   { href: '/insumos', label: 'Insumos' },
+  { href: '/compras', label: 'Compras' },
+  { href: '/ventas', label: 'Ventas' },
   { href: '/cartera', label: 'Cartera y Cuentas' },
   { href: '/simulador', label: 'Calculadora' },
   { href: '/mapa', label: 'Mapa de Parcelas' },

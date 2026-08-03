@@ -303,6 +303,33 @@ CREATE TABLE "retiros_insumo" (
 );
 
 -- CreateTable
+CREATE TABLE "ventas" (
+    "id" TEXT NOT NULL,
+    "numeroFactura" TEXT NOT NULL,
+    "solicitudId" TEXT NOT NULL,
+    "fecha" TIMESTAMP(3) NOT NULL,
+    "subtotalCosto" DECIMAL(14,2) NOT NULL,
+    "totalConMargen" DECIMAL(14,2) NOT NULL,
+    "registradoPorId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ventas_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "venta_items" (
+    "id" TEXT NOT NULL,
+    "ventaId" TEXT NOT NULL,
+    "insumoId" TEXT NOT NULL,
+    "cantidad" DECIMAL(14,2) NOT NULL,
+    "costoUnitarioAlMomento" DECIMAL(14,4) NOT NULL,
+    "costoTotal" DECIMAL(14,2) NOT NULL,
+    "montoCobradoConMargen" DECIMAL(14,2) NOT NULL,
+
+    CONSTRAINT "venta_items_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "contratos" (
     "id" TEXT NOT NULL,
     "solicitudId" TEXT NOT NULL,
@@ -419,6 +446,9 @@ CREATE UNIQUE INDEX "lotes_siembra_cicloProductorId_parcelaId_key" ON "lotes_sie
 CREATE UNIQUE INDEX "solicitudes_financiamiento_cicloProductorId_key" ON "solicitudes_financiamiento"("cicloProductorId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "ventas_numeroFactura_key" ON "ventas"("numeroFactura");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "contratos_solicitudId_key" ON "contratos"("solicitudId");
 
 -- CreateIndex
@@ -504,6 +534,18 @@ ALTER TABLE "retiros_insumo" ADD CONSTRAINT "retiros_insumo_solicitudId_fkey" FO
 
 -- AddForeignKey
 ALTER TABLE "retiros_insumo" ADD CONSTRAINT "retiros_insumo_registradoPorId_fkey" FOREIGN KEY ("registradoPorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ventas" ADD CONSTRAINT "ventas_solicitudId_fkey" FOREIGN KEY ("solicitudId") REFERENCES "solicitudes_financiamiento"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ventas" ADD CONSTRAINT "ventas_registradoPorId_fkey" FOREIGN KEY ("registradoPorId") REFERENCES "usuarios"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "venta_items" ADD CONSTRAINT "venta_items_ventaId_fkey" FOREIGN KEY ("ventaId") REFERENCES "ventas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "venta_items" ADD CONSTRAINT "venta_items_insumoId_fkey" FOREIGN KEY ("insumoId") REFERENCES "insumos"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "contratos" ADD CONSTRAINT "contratos_solicitudId_fkey" FOREIGN KEY ("solicitudId") REFERENCES "solicitudes_financiamiento"("id") ON DELETE CASCADE ON UPDATE CASCADE;

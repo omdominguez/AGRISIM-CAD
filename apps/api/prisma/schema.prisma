@@ -46,6 +46,7 @@ model Usuario {
   registrosLluvia          RegistroLluvia[]          @relation("RegistroLluviaPor")
   comprasRegistradas       CompraInsumo[]            @relation("CompraRegistradaPor")
   retirosRegistrados       RetiroInsumo[]            @relation("RetiroRegistradoPor")
+  ventasRegistradas        Venta[]                   @relation("VentaRegistradaPor")
   movimientosRegistrados   MovimientoCuenta[]        @relation("MovimientoRegistradoPor")
   logsAuditoria            LogAuditoria[]
 
@@ -441,6 +442,7 @@ model SolicitudFinanciamiento {
 
   itemsPaquete PaqueteItem[]
   retiros      RetiroInsumo[]
+  ventas       Venta[]
   contrato     Contrato?
   despachos    Despacho[]
   liquidacion  Liquidacion?
@@ -485,8 +487,9 @@ model Insumo {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  compras CompraInsumo[]
-  retiros RetiroInsumo[]
+  compras    CompraInsumo[]
+  retiros    RetiroInsumo[]
+  ventaItems VentaItem[]
 
   @@map("insumos")
 }
@@ -536,6 +539,50 @@ model RetiroInsumo {
   createdAt DateTime @default(now())
 
   @@map("retiros_insumo")
+}
+
+// ==========================================================================
+// VENTAS — la entrega de insumos como una factura real, con varias líneas
+// a la vez (ej. semilla + fertilizante en la misma entrega), en vez de un
+// retiro suelto por insumo. Reemplaza a RetiroInsumo hacia adelante como el
+// mecanismo principal — RetiroInsumo se deja tal cual por continuidad de lo
+// ya cargado, no se borra ni se migra.
+// ==========================================================================
+
+model Venta {
+  id            String                  @id @default(uuid())
+  numeroFactura String                  @unique
+  solicitudId   String
+  solicitud     SolicitudFinanciamiento @relation(fields: [solicitudId], references: [id])
+
+  fecha DateTime
+
+  subtotalCosto  Decimal @db.Decimal(14, 2) // suma del costo real (promedio ponderado) de todas las líneas
+  totalConMargen Decimal @db.Decimal(14, 2) // lo que realmente se le carga al productor — sube su cuenta por cobrar
+
+  registradoPorId String?
+  registradoPor   Usuario? @relation("VentaRegistradaPor", fields: [registradoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  items VentaItem[]
+
+  @@map("ventas")
+}
+
+model VentaItem {
+  id       String @id @default(uuid())
+  ventaId  String
+  venta    Venta  @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id])
+
+  cantidad               Decimal @db.Decimal(14, 2)
+  costoUnitarioAlMomento Decimal @db.Decimal(14, 4) // costo promedio ponderado, congelado al momento de la venta
+  costoTotal             Decimal @db.Decimal(14, 2)
+  montoCobradoConMargen  Decimal @db.Decimal(14, 2)
+
+  @@map("venta_items")
 }
 
 model Contrato {

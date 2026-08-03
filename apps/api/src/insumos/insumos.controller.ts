@@ -4,7 +4,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolUsuario } from '@prisma/client';
 import { InsumosService } from './insumos.service';
-import { CrearInsumoDto, ActualizarInsumoDto, RegistrarCompraDto, RegistrarRetiroDto } from './dto';
+import { CrearInsumoDto, ActualizarInsumoDto, RegistrarCompraDto, RegistrarRetiroDto, CrearVentaDto } from './dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('insumos')
@@ -54,5 +54,28 @@ export class InsumosController {
   @Get('solicitudes/:solicitudId/retiros')
   historialRetiros(@Param('solicitudId') solicitudId: string) {
     return this.service.historialRetiros(solicitudId);
+  }
+
+  // --- Módulo de Compras (vista global) ---
+  @Get('compras/todas')
+  listarTodasLasCompras() {
+    return this.service.listarTodasLasCompras();
+  }
+
+  // --- Módulo de Ventas (facturas con varias líneas) ---
+  @Get('ventas/todas')
+  listarVentas() {
+    return this.service.listarVentas();
+  }
+
+  @Get('ventas/solicitud/:solicitudId')
+  obtenerVentasDeSolicitud(@Param('solicitudId') solicitudId: string) {
+    return this.service.obtenerVentasDeSolicitud(solicitudId);
+  }
+
+  @Post('ventas')
+  @Roles(RolUsuario.MASTER_ADMIN, RolUsuario.GERENTE, RolUsuario.TECNICO_CAMPO)
+  crearVenta(@Body() dto: CrearVentaDto, @Req() req: any) {
+    return this.service.crearVenta(dto.solicitudId, dto.fecha, dto.items, req.user.userId);
   }
 }

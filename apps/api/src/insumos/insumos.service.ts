@@ -191,4 +191,143 @@ export class InsumosService {
       orderBy: { fecha: 'desc' },
     });
   }
+
+  // ==========================================================================
+  // MÓDULO DE COMPRAS — vista global de todo lo que ha entrado al almacén,
+  // sin importar de qué insumo. El registro puntual (POST /insumos/:id/compras)
+  // sigue igual; esto es solo para verlas todas juntas.
+  // ==========================================================================
+  listarTodasLasCompras() {
+    return this.prisma.compraInsumo.findMany({
+      include: { insumo: { select: { nombre: true, unidad: true, categoria: true } } },
+      orderBy: { fecha: 'desc' },
+    });
+  }
+
+  // ==========================================================================
+  // MÓDULO DE VENTAS — la entrega de insumos como una factura real, con
+  // varias líneas a la vez. Reemplaza el "retiro suelto por insumo" como
+  // mecanismo principal de aquí en adelante.
+  // ==========================================================================
+
+  listarVentas() {
+    return this.prisma.venta.findMany({
+      include: {
+        items: { include: { insumo: { select: { nombre: true, unidad: true } } } },
+        solicitud: { include: { cicloProductor: { include: { productor: true, ciclo: true } } } },
+      },
+      orderBy: { fecha: 'desc' },
+    });
+  }
+
+  obtenerVentasDeSolicitud(solicitudId: string) {
+    return this.prisma.venta.findMany({
+      where: { solicitudId },
+      include: { items: { include: { insumo: { select: { nombre: true, unidad: true } } } } },
+      orderBy: { fecha: 'desc' },
+    });
+  }
+
+  /**
+   * Crea la factura de venta completa: valida stock de CADA línea antes de
+   * tocar nada, congela el costo promedio ponderado de cada insumo en ese
+   * momento, aplica el margen de ESA solicitud, descuenta el inventario de
+   * cada insumo, y genera UN SOLO movimiento de cuenta con el total — así
+   * la cartera del productor ve "Factura V-00042" como un solo cargo, igual
+   * que vería una factura real, no una fila por cada insumo.
+   */
+  async crearVenta(
+    solicitudId: string,
+    fecha: string,
+    items: { insumoId: string; cantidad: number }[],
+    usuarioId: string,
+  ) {
+    if (items.length === 0) throw new BadRequestException('La factura necesita al menos una línea.');
+
+    const solicitud = await this.prisma.solicitudFinanciamiento.findUnique({
+      where: { id: solicitudId },
+      include: { cicloProductor: true },
+    });
+    if (!solicitud) throw new NotFoundException('Solicitud no encontrada.');
+
+    const estadosValidos = ['CONTRATO_FIRMADO', 'DESPACHADA', 'EN_SEGUIMIENTO'];
+    if (!estadosValidos.includes(solicitud.estado)) {
+      throw new BadRequestException('El contrato debe estar firmado antes de poder facturar insumos.');
+    }
+
+    // Validar TODAS las líneas antes de tocar cualquier stock — si una falla,
+    // no queremos que las anteriores ya hayan descontado inventario.
+    const insumos = await Promise.all(items.map(async (item) => {
+      const insumo = await this.prisma.insumo.findUnique({ where: { id: item.insumoId } });
+      if (!insumo) throw new NotFoundException(`Insumo ${item.insumoId} no encontrado.`);
+      if (item.cantidad > Number(insumo.stockActual)) {
+        throw new BadRequestException(
+          `No hay suficiente stock de "${insumo.nombre}" — disponible: ${Number(insumo.stockActual)} ${insumo.unidad}, solicitado: ${item.cantidad} ${insumo.unidad}.`,
+        );
+      }
+      return insumo;
+    }));
+
+    const margen = Number(solicitud.margenInsumosPct);
+    const lineas = items.map((item, i) => {
+      const insumo = insumos[i];
+      const costoUnitarioAlMomento = Number(insumo.costoPromedioPonderado);
+      const costoTotal = item.cantidad * costoUnitarioAlMomento;
+      const montoCobradoConMargen = costoTotal * (1 + margen);
+      return { insumo, cantidad: item.cantidad, costoUnitarioAlMomento, costoTotal, montoCobradoConMargen };
+    });
+
+    const subtotalCosto = lineas.reduce((acc, l) => acc + l.costoTotal, 0);
+    const totalConMargen = lineas.reduce((acc, l) => acc + l.montoCobradoConMargen, 0);
+
+    const numeroFactura = `V-${Date.now().toString().slice(-8)}`;
+
+    await this.prisma.$transaction([
+      this.prisma.venta.create({
+        data: {
+          numeroFactura,
+          solicitudId,
+          fecha: new Date(fecha),
+          subtotalCosto,
+          totalConMargen,
+          registradoPorId: usuarioId,
+          items: {
+            create: lineas.map((l) => ({
+              insumoId: l.insumo.id,
+              cantidad: l.cantidad,
+              costoUnitarioAlMomento: l.costoUnitarioAlMomento,
+              costoTotal: l.costoTotal,
+              montoCobradoConMargen: l.montoCobradoConMargen,
+            })),
+          },
+        },
+      }),
+      ...lineas.map((l) => this.prisma.insumo.update({
+        where: { id: l.insumo.id },
+        data: { stockActual: Number(l.insumo.stockActual) - l.cantidad },
+      })),
+      this.prisma.movimientoCuenta.create({
+        data: {
+          productorId: solicitud.cicloProductor.productorId,
+          cicloProductorId: solicitud.cicloProductorId,
+          tipo: TipoMovimiento.CARGO_INSUMOS,
+          concepto: `Factura ${numeroFactura} — ${lineas.length} insumo${lineas.length > 1 ? 's' : ''} (+${(margen * 100).toFixed(0)}%)`,
+          fecha: new Date(fecha),
+          monto: totalConMargen,
+        },
+      }),
+    ]);
+
+    if (solicitud.estado === 'CONTRATO_FIRMADO') {
+      await this.prisma.solicitudFinanciamiento.update({
+        where: { id: solicitudId },
+        data: { estado: 'DESPACHADA' },
+      });
+    }
+
+    return this.prisma.venta.findUnique({
+      where: { numeroFactura },
+      include: { items: { include: { insumo: true } } },
+    });
+  }
 }
